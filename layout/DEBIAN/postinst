@@ -1,0 +1,19 @@
+#!/bin/sh
+
+chown -R root:wheel /Applications/OldTroll.app
+chmod -R 755 /Applications/OldTroll.app
+
+chown root:wheel /usr/bin/oldtroll_helper
+chmod 6755 /usr/bin/oldtroll_helper
+
+mkdir -p /var/mobile/Library/OldTroll
+chown mobile:mobile /var/mobile/Library/OldTroll
+chmod 755 /var/mobile/Library/OldTroll
+
+if [ -x /usr/bin/uicache ]; then
+    /usr/bin/uicache > /dev/null 2>&1
+else
+    uicache > /dev/null 2>&1
+fi
+
+exit 0

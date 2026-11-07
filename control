@@ -1,0 +1,11 @@
+Package: com.cor.oldtroll
+Name: OldTroll
+Version: 1.1
+Architecture: iphoneos-arm
+Description: TrollStore-like IPA installer for legacy iOS (armv7, iOS 6-10).
+Maintainer: Cor
+Author: Cor
+Section: Utilities
+Depends: firmware (>= 6.0), unzip, ldid, dpkg, uikittools
+Homepage: http://me.asinino.cn
+Icon: file:///usr/share/icons/com.cor.oldtroll.png

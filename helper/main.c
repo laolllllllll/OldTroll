@@ -1,0 +1,288 @@
+//
+//  main.c
+//  oldtroll_helper
+//
+//  Small setuid-root helper. OldTroll runs as the mobile user, so dpkg,
+//  killall and uicache are executed here instead of through a shell.
+//  Arguments are validated and passed directly to execve; no shell is used.
+//
+
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0
+#endif
+
+#define OT_HELPER_VERSION "1.1"
+#define OT_INSTALL_LOG "/tmp/oldtroll_install.log"
+#define OT_HELPER_LOG "/tmp/oldtroll_helper.log"
+
+static char *const helper_environment[] = {
+    "PATH=/usr/bin:/bin:/usr/sbin:/sbin",
+    "HOME=/var/root",
+    "TMPDIR=/tmp",
+    "LANG=C",
+    "LC_ALL=C",
+    NULL
+};
+
+static void helper_log(const char *format, ...) {
+    int descriptor = open(OT_HELPER_LOG, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0644);
+    if (descriptor < 0) {
+        return;
+    }
+    FILE *file = fdopen(descriptor, "a");
+    if (file == NULL) {
+        close(descriptor);
+        return;
+    }
+    va_list arguments;
+    va_start(arguments, format);
+    vfprintf(file, format, arguments);
+    va_end(arguments);
+    fputc('\n', file);
+    fclose(file);
+}
+
+static int run_command(char *const arguments[], const char *outputPath) {
+    if (arguments == NULL || arguments[0] == NULL) {
+        return 127;
+    }
+    if (access(arguments[0], X_OK) != 0) {
+        fprintf(stderr, "%s: not executable\n", arguments[0]);
+        helper_log("not executable: %s", arguments[0]);
+        return 127;
+    }
+
+    pid_t child = fork();
+    if (child < 0) {
+        fprintf(stderr, "fork failed: %s\n", strerror(errno));
+        return 127;
+    }
+
+    if (child == 0) {
+        int input = open("/dev/null", O_RDONLY);
+        if (input >= 0) {
+            dup2(input, STDIN_FILENO);
+            close(input);
+        }
+        if (outputPath != NULL) {
+            int output = open(outputPath, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0644);
+            if (output >= 0) {
+                dup2(output, STDOUT_FILENO);
+                dup2(output, STDERR_FILENO);
+                close(output);
+            }
+        }
+        execve(arguments[0], arguments, helper_environment);
+        _exit(127);
+    }
+
+    int status = 0;
+    pid_t waited = (pid_t)-1;
+    do {
+        waited = waitpid(child, &status, 0);
+    } while (waited == (pid_t)-1 && errno == EINTR);
+
+    if (waited == (pid_t)-1) {
+        return 127;
+    }
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+    return 127;
+}
+
+static int has_prefix(const char *value, const char *prefix) {
+    return strncmp(value, prefix, strlen(prefix)) == 0;
+}
+
+static int is_safe_deb_path(const char *path) {
+    size_t length = strlen(path);
+    if (length < 5 || length >= PATH_MAX) {
+        return 0;
+    }
+    if (strcmp(path + length - 4, ".deb") != 0) {
+        return 0;
+    }
+    if (!has_prefix(path, "/private/tmp/") &&
+        !has_prefix(path, "/private/var/tmp/") &&
+        !has_prefix(path, "/private/var/mobile/") &&
+        !has_prefix(path, "/tmp/") &&
+        !has_prefix(path, "/var/mobile/")) {
+        return 0;
+    }
+    struct stat info;
+    if (stat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
+        return 0;
+    }
+    return 1;
+}
+
+static int is_safe_package_name(const char *name) {
+    size_t length = strlen(name);
+    if (length == 0 || length > 200) {
+        return 0;
+    }
+    if (!isalnum((unsigned char)name[0])) {
+        return 0;
+    }
+    for (size_t index = 0; index < length; index++) {
+        unsigned char character = (unsigned char)name[index];
+        if (!isalnum(character) && character != '.' && character != '-' &&
+            character != '+' && character != '_') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void usage(void) {
+    fprintf(stderr,
+            "Usage: oldtroll_helper <install|remove|respring|uicache|version> [argument]\n"
+            "  install <deb path>   install a deb package built by OldTroll\n"
+            "  remove <package>     remove an installed package\n"
+            "  respring             restart SpringBoard\n"
+            "  uicache              refresh the icon cache\n"
+            "  version              print the helper version\n");
+}
+
+int main(int argc, char *argv[]) {
+    umask(022);
+
+    if (geteuid() != 0) {
+        fprintf(stderr, "oldtroll_helper must run setuid root.\n");
+        helper_log("refused: effective uid is %d, not root", (int)geteuid());
+        return 1;
+    }
+
+    if (argc < 2) {
+        usage();
+        return 64;
+    }
+
+    const char *command = argv[1];
+    helper_log("command=%s argc=%d", command, argc);
+
+    if (strcmp(command, "version") == 0) {
+        printf("oldtroll_helper %s\n", OT_HELPER_VERSION);
+        return 0;
+    }
+
+    if (strcmp(command, "install") == 0) {
+        if (argc != 3) {
+            usage();
+            return 64;
+        }
+
+        char resolved[PATH_MAX];
+        if (realpath(argv[2], resolved) == NULL) {
+            fprintf(stderr, "Cannot resolve deb path: %s\n", strerror(errno));
+            return 2;
+        }
+        if (!is_safe_deb_path(resolved)) {
+            fprintf(stderr, "Refusing deb outside the allowed temporary directories.\n");
+            helper_log("refused deb path: %s", resolved);
+            return 3;
+        }
+
+        char *dpkg = "/usr/bin/dpkg";
+        if (access(dpkg, X_OK) != 0) {
+            dpkg = "/bin/dpkg";
+        }
+        if (access(dpkg, X_OK) != 0) {
+            fprintf(stderr, "dpkg is not installed.\n");
+            return 127;
+        }
+
+        // Start a fresh install log for this run.
+        int truncate = open(OT_INSTALL_LOG, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+        if (truncate >= 0) {
+            close(truncate);
+        }
+
+        char *arguments[] = {dpkg, "-i", resolved, NULL};
+        helper_log("install %s", resolved);
+        int status = run_command(arguments, OT_INSTALL_LOG);
+        if (status == 0) {
+            printf("Installed %s\n", resolved);
+        } else {
+            fprintf(stderr, "dpkg exited with status %d\n", status);
+        }
+        return status;
+    }
+
+    if (strcmp(command, "remove") == 0) {
+        if (argc != 3) {
+            usage();
+            return 64;
+        }
+        if (!is_safe_package_name(argv[2])) {
+            fprintf(stderr, "Invalid package name.\n");
+            return 3;
+        }
+
+        char *dpkg = "/usr/bin/dpkg";
+        if (access(dpkg, X_OK) != 0) {
+            dpkg = "/bin/dpkg";
+        }
+        if (access(dpkg, X_OK) != 0) {
+            fprintf(stderr, "dpkg is not installed.\n");
+            return 127;
+        }
+
+        int truncate = open(OT_INSTALL_LOG, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+        if (truncate >= 0) {
+            close(truncate);
+        }
+
+        char *arguments[] = {dpkg, "-r", argv[2], NULL};
+        helper_log("remove %s", argv[2]);
+        return run_command(arguments, OT_INSTALL_LOG);
+    }
+
+    if (strcmp(command, "respring") == 0) {
+        char *killall = "/usr/bin/killall";
+        if (access(killall, X_OK) != 0) {
+            killall = "/bin/killall";
+        }
+        if (access(killall, X_OK) != 0) {
+            fprintf(stderr, "killall is not installed.\n");
+            return 127;
+        }
+        char *arguments[] = {killall, "-9", "SpringBoard", NULL};
+        helper_log("respring");
+        return run_command(arguments, NULL);
+    }
+
+    if (strcmp(command, "uicache") == 0) {
+        char *uicache = "/usr/bin/uicache";
+        if (access(uicache, X_OK) != 0) {
+            uicache = "/usr/local/bin/uicache";
+        }
+        if (access(uicache, X_OK) != 0) {
+            fprintf(stderr, "uicache is not installed.\n");
+            return 127;
+        }
+        char *arguments[] = {uicache, NULL};
+        helper_log("uicache");
+        return run_command(arguments, NULL);
+    }
+
+    usage();
+    return 64;
+}

@@ -1,0 +1,186 @@
+//
+//  OTSettingsViewController.m
+//  OldTroll
+//
+
+#import "OTSettingsViewController.h"
+#import "OTAlert.h"
+#import "OTAppManager.h"
+#import "OTCompat.h"
+#import "OTIPAPackage.h"
+#import "OTProcessRunner.h"
+
+#import <sys/stat.h>
+
+@interface OTSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
+
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UISwitch *urlSchemeSwitch;
+
+@end
+
+@implementation OTSettingsViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"Settings";
+
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    [self.view addSubview:self.tableView];
+
+    self.urlSchemeSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
+    [self.urlSchemeSwitch addTarget:self action:@selector(urlSchemeChanged:) forControlEvents:UIControlEventValueChanged];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    BOOL enabled = [[NSUserDefaults standardUserDefaults] boolForKey:OTURLSchemeEnabledKey];
+    [self.urlSchemeSwitch setOn:enabled animated:NO];
+    [self.tableView reloadData];
+}
+
+- (void)urlSchemeChanged:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:OTURLSchemeEnabledKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+#pragma mark - Table view
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 4;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    switch (section) {
+        case 0: return 2;
+        case 1: return 1;
+        case 2: return 1;
+        default: return 1;
+    }
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    switch (section) {
+        case 0: return @"Actions";
+        case 1: return @"Security";
+        case 2: return @"Support";
+        default: return @"About";
+    }
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section != 1) {
+        return nil;
+    }
+    return @"When enabled, OldTroll accepts external URL calls and installs the IPA automatically:\n\n"
+            "cor-oldtroll://install?url=<IPA URL>\n"
+            "cor-oldtroll://?url=<IPA URL>\n"
+            "apple-magnifier://install?url=<IPA URL>\n\n"
+            "Percent-encoded links are supported. Leave this on if you use OldTroll from Safari or other apps.";
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == 3) {
+        return 108.0;
+    }
+    return 46.0;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *identifier = @"SettingCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    if (cell == nil) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+        cell.textLabel.font = [UIFont systemFontOfSize:16.0];
+    }
+
+    cell.accessoryView = nil;
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    // Gray exists on iOS 6 where UITableViewCellSelectionStyleDefault does not.
+    cell.selectionStyle = UITableViewCellSelectionStyleGray;
+    cell.textLabel.numberOfLines = 1;
+    cell.textLabel.textColor = [UIColor blackColor];
+
+    if (indexPath.section == 0) {
+        cell.textLabel.text = indexPath.row == 0 ? @"Respring" : @"Clear Cache";
+    } else if (indexPath.section == 1) {
+        cell.textLabel.text = @"URL Scheme Enabled";
+        cell.accessoryView = self.urlSchemeSwitch;
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    } else if (indexPath.section == 2) {
+        cell.textLabel.text = @"Donate";
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else {
+        cell.textLabel.numberOfLines = 0;
+        cell.textLabel.textColor = [UIColor colorWithWhite:0.32 alpha:1.0];
+        cell.textLabel.font = [UIFont systemFontOfSize:14.0];
+        NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        cell.textLabel.text = [NSString stringWithFormat:
+            @"OldTroll v%@\nMade by Cor (me.asinino.cn)\nRepo: apt.asinino.cn\nAll free. Enjoy!",
+            OTNonEmptyString(version, OT_VERSION_STRING)];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    }
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+
+    if (indexPath.section == 0 && indexPath.row == 0) {
+        [self confirmRespring];
+    } else if (indexPath.section == 0 && indexPath.row == 1) {
+        [self clearCache];
+    } else if (indexPath.section == 2) {
+        [self openDonatePage];
+    }
+}
+
+#pragma mark - Actions
+
+- (void)confirmRespring {
+    [OTAlert showWithTitle:@"Respring"
+                   message:@"Restart SpringBoard now?"
+              cancelButton:@"Cancel"
+                   buttons:@[@"Respring"]
+                   handler:^(NSInteger buttonIndex, NSString *text) {
+        if (buttonIndex != 1) {
+            return;
+        }
+        struct stat info;
+        if (stat("/usr/bin/oldtroll_helper", &info) != 0 || (info.st_mode & S_ISUID) == 0) {
+            [OTAlert showWithTitle:@"Failed"
+                           message:@"The privileged helper is missing. Reinstall OldTroll."
+                      cancelButton:@"OK"
+                           buttons:nil
+                           handler:nil];
+            return;
+        }
+        [OTProcessRunner run:@"/usr/bin/oldtroll_helper" arguments:@[@"respring"]];
+    }];
+}
+
+- (void)clearCache {
+    [OTAppManager clearCache];
+    [OTIPAPackage clearAllCache];
+    [OTAlert showWithTitle:@"Cache Cleared"
+                   message:@"All temporary files have been removed."
+              cancelButton:@"OK"
+                   buttons:nil
+                   handler:nil];
+}
+
+- (void)openDonatePage {
+    NSURL *url = [NSURL URLWithString:@"http://xn--cg6a.xyz/%E6%8D%90%E8%B5%A0.html"];
+    if (url == nil || ![[UIApplication sharedApplication] openURL:url]) {
+        [OTAlert showWithTitle:@"Notice"
+                       message:@"Cannot open browser. Please visit me.asinino.cn to support the developer."
+                  cancelButton:@"OK"
+                       buttons:nil
+                       handler:nil];
+    }
+}
+
+@end
