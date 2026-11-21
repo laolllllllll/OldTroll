@@ -22,28 +22,7 @@ OldTroll brings TrollStore-like functionality to older, jailbroken iOS devices. 
 
 ---
 
-## Install OldTroll
 
-### Via Cydia
-
-1. Add the repo to Cydia: `apt.asinino.cn`
-2. Search for **OldTroll**
-3. Tap **Install**
-
-### Manual Installation
-
-Download the deb package and install it via iFile, Filza, or terminal:
-
-```
-com.cor.OldTroll.iphoneos-armv7.deb
-```
-
-**Requirements:**
-- Jailbroken device (rootful)
-- armv7 CPU (iPhone 4/4S/5/5C, iPad 2/3/4, iPad mini 1, iPod touch 4/5)
-- iOS 6.0 – 10.x
-
----
 
 ## Usage
 
@@ -116,15 +95,6 @@ OldTroll converts IPA files into **signature-bypassed deb packages** directly on
 
 ---
 
-## About
-
-- **Developer:** Cor
-- **Website:** [me.asinino.cn](http://me.asinino.cn)
-- **Repo:** [apt.asinino.cn](http://apt.asinino.cn)
-- **Version:** 1.0
-- **License:** Free (all features unlocked)
-
----
 
 ## Troubleshooting
 
