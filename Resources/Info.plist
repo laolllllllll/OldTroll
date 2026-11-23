@@ -56,7 +56,7 @@
 				<string>Icon@2x</string>
 			</array>
 			<key>UIPrerenderedIcon</key>
-			<true/>
+			<false/>
 		</dict>
 	</dict>
 	<key>CFBundleIcons~ipad</key>
@@ -71,7 +71,7 @@
 				<string>Icon-72@2x</string>
 			</array>
 			<key>UIPrerenderedIcon</key>
-			<true/>
+			<false/>
 		</dict>
 	</dict>
 	<key>CFBundleIdentifier</key>

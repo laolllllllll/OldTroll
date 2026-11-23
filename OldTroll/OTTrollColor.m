@@ -205,7 +205,7 @@ static NSArray *OTSplashNames(void) {
     return result ?: source;
 }
 
-+ (UIImage *)tintedImageWithColor:(UIColor *)color size:(CGFloat)size {
++ (UIImage *)flatTintedImageWithColor:(UIColor *)color size:(CGFloat)size {
     UIImage *base = [self baseImage];
     if (base == nil || size < 1.0) {
         return nil;
@@ -218,8 +218,29 @@ static NSArray *OTSplashNames(void) {
     if (scaled == nil) {
         return nil;
     }
-    UIImage *tinted = [self applyTintToImage:scaled color:color];
-    return [self glossedImage:tinted];
+    return [self applyTintToImage:scaled color:color];
+}
+
++ (UIImage *)tintedImageWithColor:(UIColor *)color size:(CGFloat)size {
+    return [self glossedImage:[self flatTintedImageWithColor:color size:size]];
+}
+
++ (UIImage *)squareIconImageWithColor:(UIColor *)color size:(CGFloat)size {
+    UIImage *tinted = [self flatTintedImageWithColor:color size:size];
+    if (tinted == nil) {
+        return nil;
+    }
+
+    // SpringBoard expects a square, fully opaque icon. It applies the iOS 6
+    // rounded mask, gloss and press highlight itself; pre-rounded transparent
+    // art makes the highlight and shadow follow the alpha instead.
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), YES, 1.0);
+    [color setFill];
+    UIRectFill(CGRectMake(0.0, 0.0, size, size));
+    [tinted drawInRect:CGRectMake(0.0, 0.0, size, size)];
+    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return result;
 }
 
 + (UIImage *)tintedSplashNamed:(NSString *)name color:(UIColor *)color {
@@ -260,7 +281,9 @@ static NSArray *OTSplashNames(void) {
     NSArray *sizes = OTIconSizes();
     for (NSUInteger index = 0; index < names.count; index++) {
         CGFloat size = [sizes[index] doubleValue];
-        UIImage *image = [self tintedImageWithColor:color size:size];
+        BOOL isCydiaIcon = [names[index] isEqualToString:@"CydiaIcon.png"];
+        UIImage *image = isCydiaIcon ? [self tintedImageWithColor:color size:size]
+                                     : [self squareIconImageWithColor:color size:size];
         NSData *png = image == nil ? nil : UIImagePNGRepresentation(image);
         if (png == nil) {
             if (error != NULL) {
