@@ -2,8 +2,9 @@
 
 # Remove only the AppSync copies owned by OldTroll. The bundled Substrate
 # runtime is left in place because other tweaks may already rely on it.
+ASU_PLIST=/usr/libexec/oldtroll/appsync/com.cor.oldtroll.asu-inject.plist
 if [ -x /bin/launchctl ]; then
-    /bin/launchctl unload /Library/LaunchDaemons/com.cor.oldtroll.asu-inject.plist > /dev/null 2>&1 || true
+    /bin/launchctl unload "$ASU_PLIST" > /dev/null 2>&1 || true
 fi
 rm -f /Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-installd.plist
 rm -f /Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-installd.dylib

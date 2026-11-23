@@ -9,8 +9,11 @@
 #import "OTCompat.h"
 #import "OTIPAPackage.h"
 #import "OTProcessRunner.h"
+#import "OTTrollColor.h"
+#import "OTTrollColorViewController.h"
 
 #import <sys/stat.h>
+#import <math.h>
 
 @interface OTSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
 
@@ -50,14 +53,12 @@
 #pragma mark - Table view
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4;
+    return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 0: return 2;
-        case 1: return 1;
-        case 2: return 1;
         default: return 1;
     }
 }
@@ -65,14 +66,15 @@
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
         case 0: return @"Actions";
-        case 1: return @"Security";
-        case 2: return @"Support";
+        case 1: return @"Appearance";
+        case 2: return @"Security";
+        case 3: return @"Support";
         default: return @"About";
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section != 1) {
+    if (section != 2) {
         return nil;
     }
     return @"When enabled, OldTroll accepts external URL calls and installs the IPA automatically:\n\n"
@@ -83,7 +85,7 @@
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 3) {
+    if (indexPath.section == 4) {
         return 108.0;
     }
     return 46.0;
@@ -93,12 +95,13 @@
     static NSString *identifier = @"SettingCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
     if (cell == nil) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:identifier];
         cell.textLabel.font = [UIFont systemFontOfSize:16.0];
     }
 
     cell.accessoryView = nil;
     cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.detailTextLabel.text = nil;
     // Gray exists on iOS 6 where UITableViewCellSelectionStyleDefault does not.
     cell.selectionStyle = UITableViewCellSelectionStyleGray;
     cell.textLabel.numberOfLines = 1;
@@ -107,10 +110,17 @@
     if (indexPath.section == 0) {
         cell.textLabel.text = indexPath.row == 0 ? @"Respring" : @"Clear Cache";
     } else if (indexPath.section == 1) {
+        cell.textLabel.text = @"Troll Color";
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"R%d G%d B%d",
+                                     (int)lround([OTTrollColor redComponent] * 255.0),
+                                     (int)lround([OTTrollColor greenComponent] * 255.0),
+                                     (int)lround([OTTrollColor blueComponent] * 255.0)];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else if (indexPath.section == 2) {
         cell.textLabel.text = @"URL Scheme Enabled";
         cell.accessoryView = self.urlSchemeSwitch;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    } else if (indexPath.section == 2) {
+    } else if (indexPath.section == 3) {
         cell.textLabel.text = @"Donate";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else {
@@ -133,7 +143,10 @@
         [self confirmRespring];
     } else if (indexPath.section == 0 && indexPath.row == 1) {
         [self clearCache];
-    } else if (indexPath.section == 2) {
+    } else if (indexPath.section == 1) {
+        OTTrollColorViewController *color = [[OTTrollColorViewController alloc] init];
+        [self.navigationController pushViewController:color animated:YES];
+    } else if (indexPath.section == 3) {
         [self openDonatePage];
     }
 }

@@ -14,7 +14,7 @@
 #import <sys/stat.h>
 #import <unistd.h>
 
-#define OT_VERSION_STRING @"1.1"
+#define OT_VERSION_STRING @"1.2"
 
 #define OT_IS_IPAD (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
 #define OT_SYSTEM_VERSION ([[[UIDevice currentDevice] systemVersion] floatValue])

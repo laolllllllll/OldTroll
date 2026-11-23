@@ -38,6 +38,12 @@ before-package::
 	chmod 755 "$(THEOS_STAGING_DIR)/DEBIAN/postinst" 2>/dev/null || true
 	chmod 755 "$(THEOS_STAGING_DIR)/DEBIAN/prerm" 2>/dev/null || true
 	chmod 755 "$(THEOS_STAGING_DIR)/usr/libexec/oldtroll/"* 2>/dev/null || true
+	mkdir -p "$(THEOS_STAGING_DIR)/usr/libexec/oldtroll/appsync"
+	for name in OldTrollAppSync-installd.dylib OldTrollAppSync-installd.plist OldTrollAppSync-FrontBoard.dylib OldTrollAppSync-FrontBoard.plist; do \
+		if [ -e "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/$$name" ]; then \
+			mv "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/$$name" "$(THEOS_STAGING_DIR)/usr/libexec/oldtroll/appsync/$$name"; \
+		fi; \
+	done
 
 after-install::
 	install.exec "chmod 6755 /usr/bin/oldtroll_helper && killall -9 SpringBoard 2>/dev/null || true"

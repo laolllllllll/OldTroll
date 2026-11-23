@@ -57,7 +57,6 @@ chmod 755 /Library/MobileSubstrate/DynamicLibraries/MobileSafety.dylib 2>/dev/nu
 chmod 644 /Library/MobileSubstrate/DynamicLibraries/MobileSafety.plist 2>/dev/null || true
 chmod 755 /usr/bin/cynject /usr/bin/cycc /usr/libexec/substrate /usr/libexec/MSUnrestrictProcess 2>/dev/null || true
 chmod 755 /Library/LaunchDaemons
-chmod 644 /Library/LaunchDaemons/com.cor.oldtroll.asu-inject.plist
 chmod 755 /usr/share/doc/com.cor.oldtroll
 chmod 644 /usr/share/doc/com.cor.oldtroll/*
 
@@ -65,12 +64,35 @@ mkdir -p /var/mobile/Library/OldTroll
 chown mobile:mobile /var/mobile/Library/OldTroll
 chmod 755 /var/mobile/Library/OldTroll
 
-# If the device already has the official AppSync Unified tweak, keep its
-# injection plists and disable the duplicate copies bundled with OldTroll.
-if [ -f /Library/MobileSubstrate/DynamicLibraries/AppSyncUnified-installd.plist ] || \
-   [ -f /Library/MobileSubstrate/DynamicLibraries/AppSyncUnified-FrontBoard.plist ]; then
-    rm -f /Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-installd.plist
-    rm -f /Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-FrontBoard.plist
+# Bundled AppSync lives inside OldTroll's own directory. If the device
+# already has AppSync Unified, use that copy and keep ours inactive so the
+# two packages can coexist without loading duplicate hooks.
+APPSYNC_DIR=/usr/libexec/oldtroll/appsync
+SUBTWEAKS=/Library/MobileSubstrate/DynamicLibraries
+ASU_PLIST="$APPSYNC_DIR/com.cor.oldtroll.asu-inject.plist"
+chmod 755 "$APPSYNC_DIR" 2>/dev/null || true
+chmod 755 "$APPSYNC_DIR"/*.dylib 2>/dev/null || true
+chmod 644 "$APPSYNC_DIR"/*.plist 2>/dev/null || true
+rm -f /Library/LaunchDaemons/com.cor.oldtroll.asu-inject.plist
+
+if [ -e "$SUBTWEAKS/AppSyncUnified-installd.dylib" ] || \
+   [ -e "$SUBTWEAKS/AppSyncUnified-installd.plist" ]; then
+    rm -f "$SUBTWEAKS/OldTrollAppSync-installd.plist"
+    rm -f "$SUBTWEAKS/OldTrollAppSync-installd.dylib"
+    rm -f "$SUBTWEAKS/OldTrollAppSync-FrontBoard.plist"
+    rm -f "$SUBTWEAKS/OldTrollAppSync-FrontBoard.dylib"
+    if [ -x /bin/launchctl ]; then
+        /bin/launchctl unload "$ASU_PLIST" > /dev/null 2>&1 || true
+    fi
+else
+    ln -sf "$APPSYNC_DIR/OldTrollAppSync-installd.dylib" "$SUBTWEAKS/OldTrollAppSync-installd.dylib"
+    ln -sf "$APPSYNC_DIR/OldTrollAppSync-installd.plist" "$SUBTWEAKS/OldTrollAppSync-installd.plist"
+    ln -sf "$APPSYNC_DIR/OldTrollAppSync-FrontBoard.dylib" "$SUBTWEAKS/OldTrollAppSync-FrontBoard.dylib"
+    ln -sf "$APPSYNC_DIR/OldTrollAppSync-FrontBoard.plist" "$SUBTWEAKS/OldTrollAppSync-FrontBoard.plist"
+    if [ -x /bin/launchctl ]; then
+        /bin/launchctl unload "$ASU_PLIST" > /dev/null 2>&1 || true
+        /bin/launchctl load "$ASU_PLIST" > /dev/null 2>&1 || true
+    fi
 fi
 
 # Configure the bundled Substrate runtime only when the device did not

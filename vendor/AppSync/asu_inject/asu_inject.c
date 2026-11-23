@@ -19,7 +19,7 @@ extern int proc_pidpath(int, void *, uint32_t);
 
 static const char *cynject_path = "/usr/bin/cynject";
 static const char *inject_criticald_path = "/electra/inject_criticald";
-static const char *dylib_path = "/Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-installd.dylib";
+static const char *dylib_path = "/usr/libexec/oldtroll/appsync/OldTrollAppSync-installd.dylib";
 static const char *dispatch_queue_name = NULL;
 static const char *process_name = "installd";
 static int process_buffer_size = 4096;

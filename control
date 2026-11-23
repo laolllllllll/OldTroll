@@ -1,12 +1,11 @@
 Package: com.cor.oldtroll
 Name: OldTroll
-Version: 2.0
+Version: 1.2
 Architecture: iphoneos-arm
 Description: TrollStore-like IPA installer for legacy iOS (armv7, iOS 6-10), powered by a bundled AppSync runtime.
 Maintainer: Cor
 Author: Cor
 Section: Utilities
 Depends: firmware (>= 6.0)
-Conflicts: ai.akemi.appsyncunified
 Homepage: http://me.asinino.cn
 Icon: file:///usr/share/icons/com.cor.oldtroll.png

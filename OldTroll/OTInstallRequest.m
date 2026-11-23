@@ -49,11 +49,8 @@ static BOOL OTIsHTTPURL(NSURL *url, NSString **reason) {
         OTSetError(reason, @"The link does not contain a valid host.");
         return NO;
     }
-    NSString *extension = [[[url path] pathExtension] lowercaseString];
-    if (![extension isEqualToString:@"ipa"]) {
-        OTSetError(reason, @"The link must point to an .ipa file.");
-        return NO;
-    }
+    // Short CDN links often have no .ipa suffix. The downloader checks the
+    // response size and ZIP magic before handing the file to AppSync.
     return YES;
 }
 
