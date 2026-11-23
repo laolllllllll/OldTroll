@@ -114,10 +114,6 @@ static int run_command(char *const arguments[], const char *outputPath, uid_t ru
     return 127;
 }
 
-static int has_prefix(const char *value, const char *prefix) {
-    return strncmp(value, prefix, strlen(prefix)) == 0;
-}
-
 static int is_safe_ipa_path(const char *path) {
     size_t length = strlen(path);
     if (length < 5 || length >= PATH_MAX) {
@@ -126,11 +122,9 @@ static int is_safe_ipa_path(const char *path) {
     if (strcmp(path + length - 4, ".ipa") != 0) {
         return 0;
     }
-    if (!has_prefix(path, "/private/tmp/") &&
-        !has_prefix(path, "/private/var/tmp/") &&
-        !has_prefix(path, "/private/var/mobile/") &&
-        !has_prefix(path, "/tmp/") &&
-        !has_prefix(path, "/var/mobile/")) {
+    // Imported IPAs can live outside the app container (for example at /),
+    // so only require an absolute path to a regular .ipa file.
+    if (path[0] != '/') {
         return 0;
     }
     struct stat info;
@@ -207,7 +201,7 @@ int main(int argc, char *argv[]) {
             return 2;
         }
         if (!is_safe_ipa_path(resolved)) {
-            fprintf(stderr, "Refusing IPA outside the allowed temporary directories.\n");
+            fprintf(stderr, "Invalid IPA path.\n");
             helper_log("refused IPA path: %s", resolved);
             return 3;
         }
