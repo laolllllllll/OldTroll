@@ -15,6 +15,16 @@ Open OldTroll, tap **+**, then choose **Install IPA File** or **Install from URL
 
 ---
 
+## Demo
+
+<p align="center">
+  <a href="https://aka.doubaocdn.com/s/hLvyP5wYoy"><img src="run-poster.jpg" width="720" alt="OldTroll 19-second demo"></a>
+</p>
+
+<p align="center"><a href="https://aka.doubaocdn.com/s/hLvyP5wYoy">▶ Watch the 19-second demo</a> · <a href="run.mp4">download</a></p>
+
+---
+
 ## Screenshots
 
 <p align="center">
