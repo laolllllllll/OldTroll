@@ -261,6 +261,8 @@ static NSString *OTSizeStringForFile(NSString *path) {
         iconView.image = self.package.icon;
         iconView.contentMode = UIViewContentModeScaleAspectFit;
         iconView.backgroundColor = [UIColor clearColor];
+        iconView.layer.cornerRadius = 52.0 * 0.30;
+        iconView.layer.masksToBounds = YES;
         iconView.center = CGPointMake(CGRectGetMidX(alertView.bounds), 12.0 + 26.0);
         [alertView addSubview:iconView];
     }
