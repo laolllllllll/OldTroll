@@ -125,7 +125,8 @@
     }
 
     NSDictionary *item = self.items[(NSUInteger)indexPath.row];
-    cell.textLabel.text = item[@"name"];
+    NSString *icon = [item[@"isDir"] boolValue] ? @"\U0001F4C1" : @"\U0001F4C3";
+    cell.textLabel.text = [NSString stringWithFormat:@"%@  %@", icon, item[@"name"]];
     if ([item[@"isDir"] boolValue]) {
         cell.detailTextLabel.text = @"Folder";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;

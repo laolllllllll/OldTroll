@@ -173,6 +173,38 @@ static NSArray *OTSplashNames(void) {
     return result;
 }
 
++ (UIImage *)glossedImage:(UIImage *)source {
+    if (source == nil) {
+        return nil;
+    }
+    CGSize size = source.size;
+    if (size.width < 1.0 || size.height < 1.0) {
+        return source;
+    }
+
+    UIGraphicsBeginImageContextWithOptions(size, NO, 1.0);
+    [source drawInRect:CGRectMake(0.0, 0.0, size.width, size.height)];
+
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    UIBezierPath *clip = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0.0, 0.0, size.width, size.height)
+                                                      cornerRadius:size.width * 0.225];
+    [clip addClip];
+
+    CGFloat locations[2] = {0.0, 1.0};
+    CGFloat components[8] = {1.0, 1.0, 1.0, 0.74, 1.0, 1.0, 1.0, 0.0};
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGGradientRef gradient = CGGradientCreateWithColorComponents(colorSpace, components, locations, 2);
+    CGContextDrawLinearGradient(context, gradient,
+                                CGPointMake(0.0, 0.0),
+                                CGPointMake(0.0, size.height * 0.55), 0);
+    CGGradientRelease(gradient);
+    CGColorSpaceRelease(colorSpace);
+
+    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return result ?: source;
+}
+
 + (UIImage *)tintedImageWithColor:(UIColor *)color size:(CGFloat)size {
     UIImage *base = [self baseImage];
     if (base == nil || size < 1.0) {
@@ -186,7 +218,8 @@ static NSArray *OTSplashNames(void) {
     if (scaled == nil) {
         return nil;
     }
-    return [self applyTintToImage:scaled color:color];
+    UIImage *tinted = [self applyTintToImage:scaled color:color];
+    return [self glossedImage:tinted];
 }
 
 + (UIImage *)tintedSplashNamed:(NSString *)name color:(UIColor *)color {

@@ -11,6 +11,7 @@
 #import "OTIPAPackage.h"
 #import "OTInstallRequest.h"
 
+#import <QuartzCore/QuartzCore.h>
 #import <sys/stat.h>
 
 static NSString *OTSizeStringForFile(NSString *path) {
@@ -28,6 +29,75 @@ static NSString *OTSizeStringForFile(NSString *path) {
     }
     return [NSString stringWithFormat:@"%.0f B", value];
 }
+
+#pragma mark - Refined spinner
+
+@interface OTRingSpinnerView : UIView
+@property (nonatomic, strong) CAShapeLayer *trackLayer;
+@property (nonatomic, strong) CAShapeLayer *arcLayer;
+- (void)startAnimating;
+- (void)stopAnimating;
+@end
+
+@implementation OTRingSpinnerView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = [UIColor clearColor];
+        self.userInteractionEnabled = NO;
+
+        _trackLayer = [CAShapeLayer layer];
+        _trackLayer.fillColor = [UIColor clearColor].CGColor;
+        _trackLayer.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.26].CGColor;
+        _trackLayer.lineWidth = 2.0;
+        [self.layer addSublayer:_trackLayer];
+
+        _arcLayer = [CAShapeLayer layer];
+        _arcLayer.fillColor = [UIColor clearColor].CGColor;
+        _arcLayer.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+        _arcLayer.lineWidth = 2.4;
+        _arcLayer.lineCap = kCALineCapRound;
+        _arcLayer.strokeStart = 0.0;
+        _arcLayer.strokeEnd = 0.34;
+        _arcLayer.shadowColor = [UIColor whiteColor].CGColor;
+        _arcLayer.shadowOpacity = 0.45;
+        _arcLayer.shadowRadius = 2.5;
+        _arcLayer.shadowOffset = CGSizeZero;
+        [self.layer addSublayer:_arcLayer];
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGRect ringRect = CGRectInset(self.bounds, 2.0, 2.0);
+    UIBezierPath *path = [UIBezierPath bezierPathWithOvalInRect:ringRect];
+    self.trackLayer.frame = self.bounds;
+    self.trackLayer.path = path.CGPath;
+    self.arcLayer.frame = self.bounds;
+    self.arcLayer.path = path.CGPath;
+    self.arcLayer.shadowPath = path.CGPath;
+}
+
+- (void)startAnimating {
+    if ([self.arcLayer animationForKey:@"oldtroll.spin"] != nil) {
+        return;
+    }
+    CABasicAnimation *spin = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+    spin.fromValue = @(0.0);
+    spin.toValue = @(M_PI * 2.0);
+    spin.duration = 1.05;
+    spin.repeatCount = HUGE_VALF;
+    spin.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [self.arcLayer addAnimation:spin forKey:@"oldtroll.spin"];
+}
+
+- (void)stopAnimating {
+    [self.arcLayer removeAnimationForKey:@"oldtroll.spin"];
+}
+
+@end
 
 @interface OTProgressViewController () <NSURLConnectionDataDelegate, NSURLConnectionDelegate, UIAlertViewDelegate>
 
@@ -48,7 +118,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
 @property (nonatomic, assign) BOOL embedded;
 
 @property (nonatomic, strong) UIAlertView *hudAlert;
-@property (nonatomic, strong) UIActivityIndicatorView *spinner;
+@property (nonatomic, strong) OTRingSpinnerView *spinner;
 @property (nonatomic, strong) UIAlertView *metadataAlert;
 
 @end
@@ -140,9 +210,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     alert.tag = 7001;
     [alert show];
 
-    UIActivityIndicatorView *spinner =
-        [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
-    spinner.hidesWhenStopped = NO;
+    OTRingSpinnerView *spinner = [[OTRingSpinnerView alloc] initWithFrame:CGRectMake(0.0, 0.0, 30.0, 30.0)];
     [alert addSubview:spinner];
     spinner.center = CGPointMake(CGRectGetMidX(alert.bounds),
                                  CGRectGetMaxY(alert.bounds) - (canCancel ? 64.0 : 32.0));
@@ -167,6 +235,35 @@ static NSString *OTSizeStringForFile(NSString *path) {
 }
 
 - (void)didPresentAlertView:(UIAlertView *)alertView {
+    if (alertView.tag == 7002 && self.package.icon != nil && alertView.subviews.count > 0) {
+        UIView *background = alertView.subviews[0];
+        CGFloat iconHeight = 64.0;
+
+        // Grow the native alert upward, keeping it centered, then move its
+        // labels and buttons down to make room for the app icon.
+        CGRect alertFrame = alertView.frame;
+        alertFrame.origin.y -= iconHeight / 2.0;
+        alertFrame.size.height += iconHeight;
+        alertView.frame = alertFrame;
+        background.frame = alertView.bounds;
+
+        for (UIView *view in alertView.subviews) {
+            if (view == background || view.tag == 9101) {
+                continue;
+            }
+            CGRect frame = view.frame;
+            frame.origin.y += iconHeight;
+            view.frame = frame;
+        }
+
+        UIImageView *iconView = [[UIImageView alloc] initWithFrame:CGRectMake(0.0, 0.0, 52.0, 52.0)];
+        iconView.tag = 9101;
+        iconView.image = self.package.icon;
+        iconView.contentMode = UIViewContentModeScaleAspectFit;
+        iconView.backgroundColor = [UIColor clearColor];
+        iconView.center = CGPointMake(CGRectGetMidX(alertView.bounds), 12.0 + 26.0);
+        [alertView addSubview:iconView];
+    }
     if (alertView == self.hudAlert && self.spinner != nil) {
         BOOL hasCancel = alertView.cancelButtonIndex != -1;
         self.spinner.center = CGPointMake(CGRectGetMidX(alertView.bounds),
@@ -246,18 +343,9 @@ static NSString *OTSizeStringForFile(NSString *path) {
                                           otherButtonTitles:@"Install", nil];
     alert.tag = 7002;
 
-    UIImage *appIcon = self.package.icon;
-    if (appIcon != nil &&
-        [alert respondsToSelector:NSSelectorFromString(@"setAccessoryView:")]) {
-        UIImageView *iconView = [[UIImageView alloc] initWithFrame:CGRectMake(0.0, 0.0, 52.0, 52.0)];
-        iconView.image = appIcon;
-        iconView.contentMode = UIViewContentModeScaleAspectFit;
-        iconView.backgroundColor = [UIColor clearColor];
-        [alert setValue:iconView forKey:@"accessoryView"];
-    }
-
     [alert show];
     self.metadataAlert = alert;
+
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
