@@ -31,7 +31,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    self.title = @"OldTroll";
+    self.title = @"Apps";
 
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
                                                                                            target:self
