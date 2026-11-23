@@ -88,7 +88,7 @@
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 4) {
-        return indexPath.row == 0 ? 86.0 : 46.0;
+        return indexPath.row == 0 ? 64.0 : 46.0;
     }
     return 46.0;
 }
@@ -133,7 +133,7 @@
         cell.textLabel.font = [UIFont systemFontOfSize:14.0];
         NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
         cell.textLabel.text = [NSString stringWithFormat:
-            @"OldTroll v%@\nMade by Cor (me.asinino.cn)\nRepo: apt.asinino.cn\nAll free. Enjoy!",
+            @"OldTroll v%@\nAuthor: Cor",
             OTNonEmptyString(version, OT_VERSION_STRING)];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else {
