@@ -255,7 +255,7 @@
             [self.view setNeedsLayout];
 
             if (self.request.isAutomatic) {
-                [self buildAndInstall];
+                [self installPackage];
             } else {
                 [self showInstallConfirmation];
             }
@@ -277,14 +277,14 @@
             return;
         }
         if (buttonIndex == 1) {
-            [strongSelf buildAndInstall];
+            [strongSelf installPackage];
         } else {
             [strongSelf cancelWithMessage:nil];
         }
     }];
 }
 
-- (void)buildAndInstall {
+- (void)installPackage {
     if (self.cancelled || self.package == nil) {
         return;
     }
@@ -296,50 +296,23 @@
     [self updateProgress:0.05 status:@"Preparing..."];
 
     OTIPAPackage *package = self.package;
-    __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
+        __strong typeof(self) strongSelf = self;
         if (strongSelf == nil) {
             return;
         }
 
-        NSError *error = nil;
-        BOOL built = [package buildDebWithProgress:^(CGFloat progress, NSString *status) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(weakSelf) innerSelf = weakSelf;
-                if (innerSelf == nil || innerSelf.cancelled) {
-                    return;
-                }
-                CGFloat mapped = 0.05 + (progress * 0.80);
-                [innerSelf updateProgress:mapped status:status];
-            });
-        } error:&error];
-
-        if (!built) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf failWithMessage:error.localizedDescription ?: @"Could not build the installation package."];
-            });
-            return;
-        }
-        if (strongSelf.cancelled) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf cancelWithMessage:nil];
-            });
-            return;
-        }
-
         dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf updateProgress:0.90 status:@"Installing package..."];
-            [strongSelf.spinner startAnimating];
+            [strongSelf updateProgress:0.35 status:@"Installing with AppSync..."];
         });
 
-        NSError *installError = nil;
-        BOOL installed = [package installDebWithError:&installError];
+        NSError *error = nil;
+        [package installIPAWithError:&error];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (installed) {
-                [strongSelf finishWithSuccess:YES message:@"Installation complete!" appPath:package.installPath];
+            if (error == nil) {
+                [strongSelf finishWithSuccess:YES message:@"Installation complete!" appPath:package.installedPath];
             } else {
-                [strongSelf failWithMessage:installError.localizedDescription ?: @"Installation failed."];
+                [strongSelf failWithMessage:error.localizedDescription ?: @"Installation failed."];
             }
         });
     });

@@ -1,19 +1,102 @@
 #!/bin/sh
 
-chown -R root:wheel /Applications/OldTroll.app
-chmod -R 755 /Applications/OldTroll.app
+BOOTSTRAP=/usr/libexec/oldtroll/bootstrap/root
+HAD_SUBSTRATE=0
+if [ -e /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate ]; then
+    HAD_SUBSTRATE=1
+fi
+
+copy_if_missing() {
+    source_path=$1
+    target_path=$2
+    if [ ! -e "$target_path" ] && [ -e "$source_path" ]; then
+        target_parent=${target_path%/*}
+        mkdir -p "$target_parent"
+        cp -Rp "$source_path" "$target_path" 2>/dev/null || true
+    fi
+}
+
+# The DEB carries a complete Substrate runtime. It is only copied if the
+# device does not already have Cydia Substrate, so official package files
+# are never overwritten or orphaned in dpkg's file database.
+copy_if_missing "$BOOTSTRAP/Library/Frameworks/CydiaSubstrate.framework" /Library/Frameworks/CydiaSubstrate.framework
+copy_if_missing "$BOOTSTRAP/Library/MobileSubstrate/MobileSubstrate.dylib" /Library/MobileSubstrate/MobileSubstrate.dylib
+copy_if_missing "$BOOTSTRAP/Library/MobileSubstrate/DynamicLibraries/MobileSafety.dylib" /Library/MobileSubstrate/DynamicLibraries/MobileSafety.dylib
+copy_if_missing "$BOOTSTRAP/Library/MobileSubstrate/DynamicLibraries/MobileSafety.plist" /Library/MobileSubstrate/DynamicLibraries/MobileSafety.plist
+copy_if_missing "$BOOTSTRAP/usr/bin/cycc" /usr/bin/cycc
+copy_if_missing "$BOOTSTRAP/usr/bin/cynject" /usr/bin/cynject
+copy_if_missing "$BOOTSTRAP/usr/include/substrate.h" /usr/include/substrate.h
+copy_if_missing "$BOOTSTRAP/usr/lib/libsubstrate.0.dylib" /usr/lib/libsubstrate.0.dylib
+copy_if_missing "$BOOTSTRAP/usr/lib/libsubstrate.dylib" /usr/lib/libsubstrate.dylib
+copy_if_missing "$BOOTSTRAP/usr/lib/cycript0.9/com/saurik/substrate/MS.cy" /usr/lib/cycript0.9/com/saurik/substrate/MS.cy
+copy_if_missing "$BOOTSTRAP/usr/libexec/substrate" /usr/libexec/substrate
+copy_if_missing "$BOOTSTRAP/usr/libexec/MSUnrestrictProcess" /usr/libexec/MSUnrestrictProcess
+
+# Core application permissions.
+chown -R root:wheel /Applications/OldTroll.app 2>/dev/null || true
+chmod -R 755 /Applications/OldTroll.app 2>/dev/null || true
 
 chown root:wheel /usr/bin/oldtroll_helper
 chmod 6755 /usr/bin/oldtroll_helper
+
+chown -R root:wheel /usr/libexec/oldtroll 2>/dev/null || true
+chmod 755 /usr/libexec/oldtroll /usr/libexec/oldtroll/bootstrap
+chmod 755 /usr/libexec/oldtroll/appinst
+chmod 755 /usr/libexec/oldtroll/asu_inject
+chmod 755 /usr/libexec/oldtroll/unzip
+chmod 755 /usr/libexec/oldtroll/substrate-setup
+
+# Bundled injection runtime, when present at the normal system paths.
+chown -R root:wheel /Library/Frameworks/CydiaSubstrate.framework 2>/dev/null || true
+chown -R root:wheel /Library/MobileSubstrate 2>/dev/null || true
+chown root:wheel /usr/lib/libsubstrate.0.dylib /usr/lib/libsubstrate.dylib 2>/dev/null || true
+chown root:wheel /usr/bin/cynject /usr/bin/cycc /usr/include/substrate.h 2>/dev/null || true
+chown root:wheel /usr/libexec/substrate /usr/libexec/MSUnrestrictProcess 2>/dev/null || true
+chmod 755 /Library/MobileSubstrate/MobileSubstrate.dylib 2>/dev/null || true
+chmod 755 /Library/MobileSubstrate/DynamicLibraries/MobileSafety.dylib 2>/dev/null || true
+chmod 644 /Library/MobileSubstrate/DynamicLibraries/MobileSafety.plist 2>/dev/null || true
+chmod 755 /usr/bin/cynject /usr/bin/cycc /usr/libexec/substrate /usr/libexec/MSUnrestrictProcess 2>/dev/null || true
+chmod 755 /Library/LaunchDaemons
+chmod 644 /Library/LaunchDaemons/com.cor.oldtroll.asu-inject.plist
+chmod 755 /usr/share/doc/com.cor.oldtroll
+chmod 644 /usr/share/doc/com.cor.oldtroll/*
 
 mkdir -p /var/mobile/Library/OldTroll
 chown mobile:mobile /var/mobile/Library/OldTroll
 chmod 755 /var/mobile/Library/OldTroll
 
+# If the device already has the official AppSync Unified tweak, keep its
+# injection plists and disable the duplicate copies bundled with OldTroll.
+if [ -f /Library/MobileSubstrate/DynamicLibraries/AppSyncUnified-installd.plist ] || \
+   [ -f /Library/MobileSubstrate/DynamicLibraries/AppSyncUnified-FrontBoard.plist ]; then
+    rm -f /Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-installd.plist
+    rm -f /Library/MobileSubstrate/DynamicLibraries/OldTrollAppSync-FrontBoard.plist
+fi
+
+# Configure the bundled Substrate runtime only when the device did not
+# already have one. Existing jailbreaks keep their original injected state.
+if [ "$HAD_SUBSTRATE" -eq 0 ] && [ -x /usr/libexec/oldtroll/substrate-setup ]; then
+    /usr/libexec/oldtroll/substrate-setup install > /dev/null 2>&1 || true
+fi
+
+# iOS 8 and 9 look for the installd LaunchDaemon in /Library first.
+if [ ! -e /Library/LaunchDaemons/com.apple.mobile.installd.plist ] && \
+   [ -f /System/Library/LaunchDaemons/com.apple.mobile.installd.plist ]; then
+    ln -s /System/Library/LaunchDaemons/com.apple.mobile.installd.plist \
+          /Library/LaunchDaemons/com.apple.mobile.installd.plist 2>/dev/null || true
+fi
+
+# Reload installd so AppSync can attach immediately after installation.
+if [ -x /bin/launchctl ]; then
+    /bin/launchctl unload /System/Library/LaunchDaemons/com.apple.mobile.installd.plist > /dev/null 2>&1 || true
+    /bin/launchctl load /System/Library/LaunchDaemons/com.apple.mobile.installd.plist > /dev/null 2>&1 || true
+elif [ -x /usr/bin/launchctl ]; then
+    /usr/bin/launchctl unload /System/Library/LaunchDaemons/com.apple.mobile.installd.plist > /dev/null 2>&1 || true
+    /usr/bin/launchctl load /System/Library/LaunchDaemons/com.apple.mobile.installd.plist > /dev/null 2>&1 || true
+fi
+
 if [ -x /usr/bin/uicache ]; then
-    /usr/bin/uicache > /dev/null 2>&1
-else
-    uicache > /dev/null 2>&1
+    /usr/bin/uicache > /dev/null 2>&1 || true
 fi
 
 exit 0

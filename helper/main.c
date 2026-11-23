@@ -24,7 +24,8 @@
 #define O_NOFOLLOW 0
 #endif
 
-#define OT_HELPER_VERSION "1.1"
+#define OT_HELPER_VERSION "2.0"
+#define OT_APPINST_PATH "/usr/libexec/oldtroll/appinst"
 #define OT_INSTALL_LOG "/tmp/oldtroll_install.log"
 #define OT_HELPER_LOG "/tmp/oldtroll_helper.log"
 
@@ -55,7 +56,7 @@ static void helper_log(const char *format, ...) {
     fclose(file);
 }
 
-static int run_command(char *const arguments[], const char *outputPath) {
+static int run_command(char *const arguments[], const char *outputPath, uid_t runUid) {
     if (arguments == NULL || arguments[0] == NULL) {
         return 127;
     }
@@ -85,6 +86,12 @@ static int run_command(char *const arguments[], const char *outputPath) {
                 close(output);
             }
         }
+        if (runUid != 0) {
+            // uicache writes to the mobile user's icon cache; run it unprivileged.
+            setgid(runUid);
+            setuid(runUid);
+            setenv("HOME", "/var/mobile", 1);
+        }
         execve(arguments[0], arguments, helper_environment);
         _exit(127);
     }
@@ -111,12 +118,12 @@ static int has_prefix(const char *value, const char *prefix) {
     return strncmp(value, prefix, strlen(prefix)) == 0;
 }
 
-static int is_safe_deb_path(const char *path) {
+static int is_safe_ipa_path(const char *path) {
     size_t length = strlen(path);
     if (length < 5 || length >= PATH_MAX) {
         return 0;
     }
-    if (strcmp(path + length - 4, ".deb") != 0) {
+    if (strcmp(path + length - 4, ".ipa") != 0) {
         return 0;
     }
     if (!has_prefix(path, "/private/tmp/") &&
@@ -153,9 +160,10 @@ static int is_safe_package_name(const char *name) {
 
 static void usage(void) {
     fprintf(stderr,
-            "Usage: oldtroll_helper <install|remove|respring|uicache|version> [argument]\n"
-            "  install <deb path>   install a deb package built by OldTroll\n"
-            "  remove <package>     remove an installed package\n"
+            "Usage: oldtroll_helper <install|remove|remove-deb|respring|uicache|version> [argument]\n"
+            "  install <ipa path> <bundle id>  install an IPA through bundled appinst\n"
+            "  remove <bundle id>   uninstall an AppSync-installed application\n"
+            "  remove-deb <package> remove a package installed by OldTroll 1.x\n"
             "  respring             restart SpringBoard\n"
             "  uicache              refresh the icon cache\n"
             "  version              print the helper version\n");
@@ -184,49 +192,71 @@ int main(int argc, char *argv[]) {
     }
 
     if (strcmp(command, "install") == 0) {
-        if (argc != 3) {
+        if (argc != 4) {
             usage();
             return 64;
+        }
+        if (!is_safe_package_name(argv[3])) {
+            fprintf(stderr, "Invalid bundle identifier.\n");
+            return 3;
         }
 
         char resolved[PATH_MAX];
         if (realpath(argv[2], resolved) == NULL) {
-            fprintf(stderr, "Cannot resolve deb path: %s\n", strerror(errno));
+            fprintf(stderr, "Cannot resolve IPA path: %s\n", strerror(errno));
             return 2;
         }
-        if (!is_safe_deb_path(resolved)) {
-            fprintf(stderr, "Refusing deb outside the allowed temporary directories.\n");
-            helper_log("refused deb path: %s", resolved);
+        if (!is_safe_ipa_path(resolved)) {
+            fprintf(stderr, "Refusing IPA outside the allowed temporary directories.\n");
+            helper_log("refused IPA path: %s", resolved);
             return 3;
         }
-
-        char *dpkg = "/usr/bin/dpkg";
-        if (access(dpkg, X_OK) != 0) {
-            dpkg = "/bin/dpkg";
-        }
-        if (access(dpkg, X_OK) != 0) {
-            fprintf(stderr, "dpkg is not installed.\n");
+        if (access(OT_APPINST_PATH, X_OK) != 0) {
+            fprintf(stderr, "The bundled appinst is missing. Reinstall OldTroll.\n");
             return 127;
         }
 
-        // Start a fresh install log for this run.
         int truncate = open(OT_INSTALL_LOG, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
         if (truncate >= 0) {
             close(truncate);
         }
 
-        char *arguments[] = {dpkg, "-i", resolved, NULL};
-        helper_log("install %s", resolved);
-        int status = run_command(arguments, OT_INSTALL_LOG);
+        char *arguments[] = {OT_APPINST_PATH, "--install", argv[3], resolved, NULL};
+        helper_log("AppSync install %s", resolved);
+        int status = run_command(arguments, OT_INSTALL_LOG, 0);
         if (status == 0) {
             printf("Installed %s\n", resolved);
         } else {
-            fprintf(stderr, "dpkg exited with status %d\n", status);
+            fprintf(stderr, "appinst exited with status %d\n", status);
         }
         return status;
     }
 
     if (strcmp(command, "remove") == 0) {
+        if (argc != 3) {
+            usage();
+            return 64;
+        }
+        if (!is_safe_package_name(argv[2])) {
+            fprintf(stderr, "Invalid bundle identifier.\n");
+            return 3;
+        }
+        if (access(OT_APPINST_PATH, X_OK) != 0) {
+            fprintf(stderr, "The bundled appinst is missing. Reinstall OldTroll.\n");
+            return 127;
+        }
+
+        int truncate = open(OT_INSTALL_LOG, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+        if (truncate >= 0) {
+            close(truncate);
+        }
+
+        char *arguments[] = {OT_APPINST_PATH, "--uninstall", argv[2], NULL};
+        helper_log("AppSync uninstall %s", argv[2]);
+        return run_command(arguments, OT_INSTALL_LOG, 0);
+    }
+
+    if (strcmp(command, "remove-deb") == 0) {
         if (argc != 3) {
             usage();
             return 64;
@@ -251,8 +281,8 @@ int main(int argc, char *argv[]) {
         }
 
         char *arguments[] = {dpkg, "-r", argv[2], NULL};
-        helper_log("remove %s", argv[2]);
-        return run_command(arguments, OT_INSTALL_LOG);
+        helper_log("remove legacy deb %s", argv[2]);
+        return run_command(arguments, OT_INSTALL_LOG, 0);
     }
 
     if (strcmp(command, "respring") == 0) {
@@ -266,7 +296,7 @@ int main(int argc, char *argv[]) {
         }
         char *arguments[] = {killall, "-9", "SpringBoard", NULL};
         helper_log("respring");
-        return run_command(arguments, NULL);
+        return run_command(arguments, NULL, 0);
     }
 
     if (strcmp(command, "uicache") == 0) {
@@ -280,7 +310,7 @@ int main(int argc, char *argv[]) {
         }
         char *arguments[] = {uicache, NULL};
         helper_log("uicache");
-        return run_command(arguments, NULL);
+        return run_command(arguments, NULL, 501);
     }
 
     usage();

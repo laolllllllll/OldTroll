@@ -3,7 +3,7 @@
 //  OldTroll
 //
 //  One screen owns the whole URL-scheme install: download (if needed),
-//  extract, ldid sign, build the deb, dpkg it, and report back.
+//  inspect the IPA, install through appinst, and report back.
 //
 
 #import <UIKit/UIKit.h>

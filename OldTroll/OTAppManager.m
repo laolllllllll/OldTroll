@@ -10,7 +10,17 @@
 
 #import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
+#import <objc/runtime.h>
 #import <sys/stat.h>
+
+@interface LSApplicationProxy : NSObject
+- (NSURL *)bundleURL;
+@end
+
+@interface LSApplicationWorkspace : NSObject
++ (id)defaultWorkspace;
+- (LSApplicationProxy *)applicationProxyForIdentifier:(NSString *)identifier;
+@end
 
 static NSString * const OTDataDirectory = @"/var/mobile/Library/OldTroll";
 static NSString * const OTInstalledListPath = @"/var/mobile/Library/OldTroll/installed.plist";
@@ -75,7 +85,7 @@ static BOOL OTHelperIsPrivileged(void) {
     for (id item in stored) {
         if ([item isKindOfClass:[NSString class]]) {
             // OldTroll 1.0 stored a plain array of bundle identifiers.
-            [records addObject:[@{@"bundleId": item, @"package": item} mutableCopy]];
+            [records addObject:[@{@"bundleId": item, @"package": item, @"installMethod": @"legacy"} mutableCopy]];
         } else if ([item isKindOfClass:[NSDictionary class]]) {
             NSString *bundleId = item[@"bundleId"];
             if (OTStringIsEmpty(bundleId)) {
@@ -84,6 +94,10 @@ static BOOL OTHelperIsPrivileged(void) {
             NSMutableDictionary *record = [item mutableCopy];
             if (OTStringIsEmpty(record[@"package"])) {
                 record[@"package"] = OTPackageIdentifierForBundleId(bundleId);
+            }
+            // Records from OldTroll 1.x predate AppSync and were installed with dpkg.
+            if (OTStringIsEmpty(record[@"installMethod"])) {
+                record[@"installMethod"] = @"legacy";
             }
             [records addObject:record];
         }
@@ -115,14 +129,27 @@ static BOOL OTHelperIsPrivileged(void) {
 - (NSDictionary *)appPathsByBundleId {
     NSMutableDictionary *map = [NSMutableDictionary dictionary];
     NSFileManager *manager = [NSFileManager defaultManager];
-    NSArray *roots = @[@"/Applications", @"/var/stash"];
+    NSArray *roots = @[@"/Applications", @"/var/stash", @"/var/mobile/Applications"];
     for (NSString *root in roots) {
         NSArray *children = [manager contentsOfDirectoryAtPath:root error:NULL];
+        NSMutableArray *candidates = [NSMutableArray array];
         for (NSString *child in children) {
-            if (![[[child pathExtension] lowercaseString] isEqualToString:@"app"]) {
+            NSString *path = [root stringByAppendingPathComponent:child];
+            if ([[[child pathExtension] lowercaseString] isEqualToString:@"app"]) {
+                [candidates addObject:path];
                 continue;
             }
-            NSString *path = [root stringByAppendingPathComponent:child];
+            // iOS 5-7 stores each user app inside its own UUID directory.
+            if ([root isEqualToString:@"/var/mobile/Applications"]) {
+                NSArray *nested = [manager contentsOfDirectoryAtPath:path error:NULL];
+                for (NSString *nestedChild in nested) {
+                    if ([[[nestedChild pathExtension] lowercaseString] isEqualToString:@"app"]) {
+                        [candidates addObject:[path stringByAppendingPathComponent:nestedChild]];
+                    }
+                }
+            }
+        }
+        for (NSString *path in candidates) {
             NSString *plistPath = [path stringByAppendingPathComponent:@"Info.plist"];
             NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
             NSString *bundleId = info[@"CFBundleIdentifier"];
@@ -181,11 +208,31 @@ static BOOL OTHelperIsPrivileged(void) {
 }
 
 - (NSString *)installedPathForBundleId:(NSString *)bundleId {
+    if (OTStringIsEmpty(bundleId)) {
+        return nil;
+    }
+
     NSDictionary *record = [self recordForBundleId:bundleId];
     NSString *path = record[@"path"];
     if (!OTStringIsEmpty(path) && [[NSFileManager defaultManager] fileExistsAtPath:path]) {
         return path;
     }
+
+    Class workspaceClass = objc_getClass("LSApplicationWorkspace");
+    if (workspaceClass != nil) {
+        id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
+        if ([workspace respondsToSelector:@selector(applicationProxyForIdentifier:)]) {
+            LSApplicationProxy *proxy = [workspace applicationProxyForIdentifier:bundleId];
+            if ([proxy respondsToSelector:@selector(bundleURL)]) {
+                NSURL *bundleURL = [proxy bundleURL];
+                NSString *resolved = bundleURL.path;
+                if (!OTStringIsEmpty(resolved) && [[NSFileManager defaultManager] fileExistsAtPath:resolved]) {
+                    return resolved;
+                }
+            }
+        }
+    }
+
     return [self appPathsByBundleId][bundleId];
 }
 
@@ -193,7 +240,8 @@ static BOOL OTHelperIsPrivileged(void) {
 
 - (void)recordInstalledAppWithBundleId:(NSString *)bundleId
                                package:(NSString *)package
-                                  path:(NSString *)path {
+                                  path:(NSString *)path
+                                method:(NSString *)method {
     if (OTStringIsEmpty(bundleId)) {
         return;
     }
@@ -206,10 +254,13 @@ static BOOL OTHelperIsPrivileged(void) {
     }
     NSMutableDictionary *record = [NSMutableDictionary dictionary];
     record[@"bundleId"] = bundleId;
-    record[@"package"] = OTNonEmptyString(package, OTPackageIdentifierForBundleId(bundleId));
+    if (!OTStringIsEmpty(package)) {
+        record[@"package"] = package;
+    }
     if (!OTStringIsEmpty(path)) {
         record[@"path"] = path;
     }
+    record[@"installMethod"] = OTNonEmptyString(method, @"appsync");
     [records addObject:record];
     [self saveRecords];
 }
@@ -229,47 +280,32 @@ static BOOL OTHelperIsPrivileged(void) {
 }
 
 - (BOOL)uninstallAppAtPath:(NSString *)path bundleId:(NSString *)bundleId error:(NSString **)error {
-    NSString *package = [self packageIdentifierForBundleId:bundleId];
+    NSDictionary *record = [self recordForBundleId:bundleId];
+    NSString *method = record[@"installMethod"];
     NSString *lastError = nil;
     BOOL removed = NO;
 
     if (OTHelperIsPrivileged()) {
-        OTProcessResult *result = [OTProcessRunner run:OTHelperPath arguments:@[@"remove", package]];
+        OTProcessResult *result = nil;
+        if ([method isEqualToString:@"appsync"]) {
+            result = [OTProcessRunner run:OTHelperPath arguments:@[@"remove", bundleId]];
+        } else {
+            NSString *package = [self packageIdentifierForBundleId:bundleId];
+            result = [OTProcessRunner run:OTHelperPath arguments:@[@"remove-deb", package]];
+        }
         if (result.succeeded) {
             removed = YES;
         } else {
-            lastError = OTNonEmptyString(result.output, @"dpkg failed to remove the package.");
+            lastError = OTNonEmptyString(result.output, @"appinst failed to remove the application.");
         }
-    }
-
-    if (!removed) {
-        NSFileManager *manager = [NSFileManager defaultManager];
-        NSMutableArray *targets = [NSMutableArray array];
-        NSString *bundleName = [path lastPathComponent];
-        if (!OTStringIsEmpty(path)) {
-            [targets addObject:path];
-        }
-        if (!OTStringIsEmpty(bundleName)) {
-            [targets addObject:[@"/Applications" stringByAppendingPathComponent:bundleName]];
-            [targets addObject:[@"/var/stash" stringByAppendingPathComponent:bundleName]];
-        }
-        for (NSString *target in targets) {
-            if (![manager fileExistsAtPath:target]) {
-                continue;
-            }
-            NSError *removeError = nil;
-            if ([manager removeItemAtPath:target error:&removeError]) {
-                removed = YES;
-            } else if (lastError == nil) {
-                lastError = removeError.localizedDescription;
-            }
-        }
+    } else {
+        lastError = @"oldtroll_helper lost its setuid root bit. Reinstall OldTroll.";
     }
 
     if (removed) {
         [self removeInstalledAppWithBundleId:bundleId];
+        [self refreshIconCache];
     }
-    [self refreshIconCache];
 
     if (!removed && error != NULL) {
         *error = lastError ?: @"The app could not be removed. Reinstall OldTroll and try again.";

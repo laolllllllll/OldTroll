@@ -23,17 +23,18 @@
 
 - (void)recordInstalledAppWithBundleId:(NSString *)bundleId
                                package:(NSString *)package
-                                  path:(NSString *)path;
+                                  path:(NSString *)path
+                                method:(NSString *)method;
 - (void)removeInstalledAppWithBundleId:(NSString *)bundleId;
 
-// Removes the dpkg package (through the setuid helper). Falls back to removing
-// the app bundle and its /Applications symlink if dpkg is unavailable.
+// Uninstalls through appinst for AppSync installs. OldTroll 1.x records still
+// use dpkg so upgrades do not leave orphaned application bundles behind.
 - (BOOL)uninstallAppAtPath:(NSString *)path bundleId:(NSString *)bundleId error:(NSString **)error;
 
 - (BOOL)openAppWithBundleId:(NSString *)bundleId;
 - (void)refreshIconCache;
 
-// Deletes /tmp/oldtroll_* build products and downloaded IPAs.
+// Deletes /tmp/oldtroll_* preview files and downloaded IPAs.
 + (void)clearCache;
 
 @end
