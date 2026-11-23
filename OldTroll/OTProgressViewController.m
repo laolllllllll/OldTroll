@@ -9,26 +9,9 @@
 #import "OTAppManager.h"
 #import "OTCompat.h"
 #import "OTIPAPackage.h"
-#import "OTInstallMetadataViewController.h"
 #import "OTInstallRequest.h"
 
-#import <QuartzCore/QuartzCore.h>
 #import <sys/stat.h>
-
-static UIImage *OTWindowSnapshot(void) {
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
-    if (window == nil || window.bounds.size.width < 1.0 || window.bounds.size.height < 1.0) {
-        return nil;
-    }
-    UIGraphicsBeginImageContextWithOptions(window.bounds.size, YES, 1.0);
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    if (context != NULL) {
-        [window.layer renderInContext:context];
-    }
-    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return image;
-}
 
 static NSString *OTSizeStringForFile(NSString *path) {
     NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
@@ -46,7 +29,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     return [NSString stringWithFormat:@"%.0f B", value];
 }
 
-@interface OTProgressViewController () <NSURLConnectionDataDelegate, NSURLConnectionDelegate>
+@interface OTProgressViewController () <NSURLConnectionDataDelegate, NSURLConnectionDelegate, UIAlertViewDelegate>
 
 @property (nonatomic, strong) OTInstallRequest *request;
 @property (nonatomic, strong) OTIPAPackage *package;
@@ -62,16 +45,11 @@ static NSString *OTSizeStringForFile(NSString *path) {
 @property (nonatomic, assign) BOOL installing;
 @property (nonatomic, assign) NSTimeInterval lastProgressUpdate;
 @property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTask;
-
-@property (nonatomic, strong) UIView *cardView;
-@property (nonatomic, strong) UIImage *backgroundSnapshot;
 @property (nonatomic, assign) BOOL embedded;
-@property (nonatomic, strong) UIImageView *iconView;
-@property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UIProgressView *progressView;
-@property (nonatomic, strong) UILabel *statusLabel;
+
+@property (nonatomic, strong) UIAlertView *hudAlert;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
-@property (nonatomic, strong) UIButton *cancelButton;
+@property (nonatomic, strong) UIAlertView *metadataAlert;
 
 @end
 
@@ -83,13 +61,14 @@ static NSString *OTSizeStringForFile(NSString *path) {
         _request = request;
         _lastProgressUpdate = 0;
         _backgroundTask = UIBackgroundTaskInvalid;
-        _backgroundSnapshot = OTWindowSnapshot();
     }
     return self;
 }
 
 - (void)dealloc {
     [_connection cancel];
+    _hudAlert.delegate = nil;
+    _metadataAlert.delegate = nil;
     if (_backgroundTask != UIBackgroundTaskInvalid) {
         [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask];
     }
@@ -117,81 +96,21 @@ static NSString *OTSizeStringForFile(NSString *path) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-
-    self.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.35];
-    if (!self.embedded && self.backgroundSnapshot != nil) {
-        UIImageView *backgroundView = [[UIImageView alloc] initWithFrame:self.view.bounds];
-        backgroundView.image = self.backgroundSnapshot;
-        backgroundView.contentMode = UIViewContentModeScaleToFill;
-        backgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [self.view addSubview:backgroundView];
-    }
+    self.view.backgroundColor = [UIColor clearColor];
     if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)]) {
         self.edgesForExtendedLayout = UIRectEdgeNone;
     }
-
-    self.cardView = [[UIView alloc] initWithFrame:CGRectZero];
-    self.cardView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.97];
-    self.cardView.layer.cornerRadius = 14.0;
-    self.cardView.layer.masksToBounds = YES;
-    [self.view addSubview:self.cardView];
-
-    self.iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
-    self.iconView.contentMode = UIViewContentModeScaleAspectFit;
-    self.iconView.hidden = YES;
-    [self.cardView addSubview:self.iconView];
-
-    // Keep these views for state updates, but the TrollStore-style HUD only
-    // shows the spinner and the current activity text.
-    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.titleLabel.hidden = YES;
-    [self.cardView addSubview:self.titleLabel];
-
-    self.progressView = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
-    self.progressView.progress = 0.0;
-    self.progressView.hidden = YES;
-    [self.cardView addSubview:self.progressView];
-
-    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.statusLabel.backgroundColor = [UIColor clearColor];
-    self.statusLabel.font = [UIFont boldSystemFontOfSize:17.0];
-    self.statusLabel.textColor = [UIColor colorWithWhite:0.10 alpha:1.0];
-    self.statusLabel.textAlignment = NSTextAlignmentCenter;
-    self.statusLabel.numberOfLines = 2;
-    self.statusLabel.text = @"Installing";
-    [self.cardView addSubview:self.statusLabel];
-
-    self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
-    self.spinner.hidesWhenStopped = YES;
-    self.spinner.transform = CGAffineTransformMakeScale(1.45, 1.45);
-    [self.cardView addSubview:self.spinner];
-
-    self.cancelButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
-    [self.cancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
-    self.cancelButton.titleLabel.font = [UIFont systemFontOfSize:15.0];
-    self.cancelButton.hidden = YES;
-    [self.cancelButton addTarget:self action:@selector(cancelTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [self.cardView addSubview:self.cancelButton];
-
-    [self.view setNeedsLayout];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    if (!self.started) {
-        self.started = YES;
-        [self beginInstall];
+    if (self.started) {
+        return;
     }
-}
-
-- (void)viewWillLayoutSubviews {
-    [super viewWillLayoutSubviews];
-    [self layoutContent];
-}
-
-- (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration {
-    [super willAnimateRotationToInterfaceOrientation:orientation duration:duration];
-    [self.view setNeedsLayout];
+    self.started = YES;
+    NSString *title = self.request.isRemote ? @"Downloading" : @"Installing";
+    [self showHUDWithTitle:title canCancel:self.request.isRemote];
+    [self beginInstall];
 }
 
 #pragma mark - Orientation
@@ -208,23 +127,51 @@ static NSString *OTSizeStringForFile(NSString *path) {
     return OT_IS_IPAD ? YES : (interfaceOrientation == UIInterfaceOrientationPortrait);
 }
 
-#pragma mark - Layout
+#pragma mark - Native HUD
 
-- (void)layoutContent {
-    CGFloat width = self.view.bounds.size.width;
-    CGFloat height = self.view.bounds.size.height;
-    CGFloat cardWidth = MIN(OT_IS_IPAD ? 300.0 : 250.0, width - 40.0);
-    BOOL showsCancel = !self.cancelButton.hidden;
-    CGFloat cardHeight = showsCancel ? 178.0 : 136.0;
+- (void)showHUDWithTitle:(NSString *)title canCancel:(BOOL)canCancel {
+    [self hideHUD];
 
-    self.cardView.frame = CGRectMake((width - cardWidth) / 2.0,
-                                     (height - cardHeight) / 2.0,
-                                     cardWidth,
-                                     cardHeight);
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:OTNonEmptyString(title, @"Installing")
+                                                    message:canCancel ? @"\n" : @"\n\n"
+                                                   delegate:self
+                                          cancelButtonTitle:canCancel ? @"Cancel" : nil
+                                          otherButtonTitles:nil];
+    alert.tag = 7001;
+    [alert show];
 
-    self.spinner.frame = CGRectMake((cardWidth - 24.0) / 2.0, 26.0, 24.0, 24.0);
-    self.statusLabel.frame = CGRectMake(14.0, 66.0, cardWidth - 28.0, 44.0);
-    self.cancelButton.frame = CGRectMake((cardWidth - 120.0) / 2.0, 122.0, 120.0, 40.0);
+    UIActivityIndicatorView *spinner =
+        [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+    spinner.hidesWhenStopped = NO;
+    [alert addSubview:spinner];
+    spinner.center = CGPointMake(CGRectGetMidX(alert.bounds),
+                                 CGRectGetMaxY(alert.bounds) - (canCancel ? 58.0 : 40.0));
+    [spinner startAnimating];
+
+    self.hudAlert = alert;
+    self.spinner = spinner;
+}
+
+- (void)hideHUD {
+    if (self.spinner != nil) {
+        [self.spinner stopAnimating];
+        [self.spinner removeFromSuperview];
+        self.spinner = nil;
+    }
+    if (self.hudAlert != nil) {
+        UIAlertView *alert = self.hudAlert;
+        self.hudAlert = nil;
+        alert.delegate = nil;
+        [alert dismissWithClickedButtonIndex:0 animated:YES];
+    }
+}
+
+- (void)didPresentAlertView:(UIAlertView *)alertView {
+    if (alertView == self.hudAlert && self.spinner != nil) {
+        BOOL hasCancel = alertView.cancelButtonIndex != -1;
+        self.spinner.center = CGPointMake(CGRectGetMidX(alertView.bounds),
+                                          CGRectGetMaxY(alertView.bounds) - (hasCancel ? 58.0 : 40.0));
+    }
 }
 
 #pragma mark - Flow
@@ -248,10 +195,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     self.downloadPath = [NSString stringWithFormat:@"/tmp/oldtroll_download_%ld_%u.ipa",
                          (long)[[NSDate date] timeIntervalSince1970], arc4random()];
 
-    self.cancelButton.hidden = NO;
     [self updateProgress:0.0 status:@"Downloading"];
-    [self.spinner startAnimating];
-    [self.view setNeedsLayout];
 
     NSURLRequest *urlRequest = [NSURLRequest requestWithURL:self.request.sourceURL
                                                 cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
@@ -264,7 +208,6 @@ static NSString *OTSizeStringForFile(NSString *path) {
         return;
     }
     [self updateProgress:0.0 status:[self installActivityText]];
-    [self.spinner startAnimating];
     self.packageSize = OTSizeStringForFile(path);
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -282,49 +225,47 @@ static NSString *OTSizeStringForFile(NSString *path) {
                 return;
             }
             self.package = package;
-            if (package.icon != nil) {
-                self.iconView.image = package.icon;
-                self.iconView.hidden = NO;
-            }
-            self.titleLabel.text = package.appName;
-            [self.spinner stopAnimating];
-            [self.view setNeedsLayout];
             [self showInstallConfirmation];
         });
     });
 }
 
 - (void)showInstallConfirmation {
-    self.spinner.hidden = YES;
-    self.cardView.hidden = YES;
-    self.view.backgroundColor = [UIColor clearColor];
+    [self hideHUD];
 
-    OTInstallMetadataViewController *metadata =
-        [[OTInstallMetadataViewController alloc] initWithName:self.package.appName
-                                                     bundleId:self.package.bundleId
-                                                      version:self.package.version
-                                                         size:self.packageSize
-                                                         icon:self.package.icon];
-    metadata.modalPresentationStyle = UIModalPresentationCurrentContext;
+    NSString *message = [NSString stringWithFormat:
+        @"Metadata\n\nBundle Identifier: %@\nVersion: %@\nSize: %@",
+        OTNonEmptyString(self.package.bundleId, @"unknown"),
+        OTNonEmptyString(self.package.version, @"Unknown"),
+        OTNonEmptyString(self.packageSize, @"Unknown")];
 
-    __weak typeof(self) weakSelf = self;
-    metadata.cancelBlock = ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (strongSelf != nil) {
-            [strongSelf cancelWithMessage:nil];
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:OTNonEmptyString(self.package.appName, @"Install IPA")
+                                                    message:message
+                                                   delegate:self
+                                          cancelButtonTitle:@"Cancel"
+                                          otherButtonTitles:@"Install", nil];
+    alert.tag = 7002;
+    [alert show];
+    self.metadataAlert = alert;
+}
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
+    if (alertView.tag == 7002) {
+        self.metadataAlert = nil;
+        if (buttonIndex == 1) {
+            [self showHUDWithTitle:[self installActivityText] canCancel:NO];
+            [self installPackage];
+        } else {
+            [self cancelWithMessage:nil];
         }
-    };
-    metadata.installBlock = ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (strongSelf == nil) {
-            return;
+        return;
+    }
+
+    if (alertView.tag == 7001 && buttonIndex == alertView.cancelButtonIndex) {
+        if (!self.installing) {
+            [self cancelWithMessage:nil];
         }
-        strongSelf.cardView.hidden = NO;
-        strongSelf.spinner.hidden = NO;
-        strongSelf.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.35];
-        [strongSelf installPackage];
-    };
-    [self presentViewController:metadata animated:YES completion:nil];
+    }
 }
 
 - (void)installPackage {
@@ -333,9 +274,6 @@ static NSString *OTSizeStringForFile(NSString *path) {
     }
 
     self.installing = YES;
-    self.cancelButton.hidden = YES;
-    self.cancelButton.enabled = NO;
-    [self.view setNeedsLayout];
     [self beginBackgroundTaskIfPossible];
     [self updateProgress:0.05 status:[self installActivityText]];
 
@@ -368,13 +306,9 @@ static NSString *OTSizeStringForFile(NSString *path) {
     if (self.finished) {
         return;
     }
-    if (status.length > 0) {
-        self.statusLabel.text = status;
+    if (!OTStringIsEmpty(status) && self.hudAlert != nil) {
+        self.hudAlert.title = status;
     }
-    if (progress >= 0.0) {
-        self.progressView.progress = MAX(0.0, MIN(1.0, progress));
-    }
-    [self.view setNeedsLayout];
 }
 
 - (void)beginBackgroundTaskIfPossible {
@@ -416,18 +350,11 @@ static NSString *OTSizeStringForFile(NSString *path) {
         return;
     }
     self.finished = YES;
-    self.cancelButton.hidden = YES;
-    [self.spinner stopAnimating];
+    [self hideHUD];
 
     OTAppInfo *app = nil;
     if (success && !OTStringIsEmpty(appPath)) {
         app = [OTAppInfo infoWithAppPath:appPath];
-    }
-    if (success) {
-        self.statusLabel.text = @"Installation complete!";
-        self.progressView.progress = 1.0;
-    } else {
-        self.statusLabel.text = @"Installation Failed";
     }
 
     [self endBackgroundTask];
@@ -469,7 +396,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     self.cancelled = YES;
     [self.connection cancel];
     self.connection = nil;
-    [self.spinner stopAnimating];
+    [self hideHUD];
 
     if (self.downloadPath != nil) {
         [[NSFileManager defaultManager] removeItemAtPath:self.downloadPath error:NULL];
@@ -490,13 +417,6 @@ static NSString *OTSizeStringForFile(NSString *path) {
         }
         (void)weakSelf;
     }];
-}
-
-- (void)cancelTapped:(id)sender {
-    if (self.installing) {
-        return;
-    }
-    [self cancelWithMessage:nil];
 }
 
 #pragma mark - Download delegate
@@ -541,7 +461,6 @@ static NSString *OTSizeStringForFile(NSString *path) {
     if (self.finished || self.cancelled) {
         return;
     }
-    [self.spinner stopAnimating];
 
     if (self.downloadData.length < 1024) {
         [self failWithMessage:@"The downloaded file is too small to be an IPA."];
