@@ -230,7 +230,7 @@
         }
 
         OTProgressViewController *progress = [[OTProgressViewController alloc] initWithRequest:request];
-        progress.modalPresentationStyle = UIModalPresentationFullScreen;
+        progress.modalPresentationStyle = UIModalPresentationCurrentContext;
         progress.completionBlock = ^(BOOL success, OTAppInfo *app, NSString *message) {
             __strong typeof(weakSelf) innerSelf = weakSelf;
             if (innerSelf == nil) {

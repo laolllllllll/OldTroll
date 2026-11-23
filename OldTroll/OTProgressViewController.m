@@ -64,16 +64,14 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    self.view.backgroundColor = [UIColor colorWithWhite:0.94 alpha:1.0];
+    self.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.35];
     if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)]) {
         self.edgesForExtendedLayout = UIRectEdgeNone;
     }
 
     self.cardView = [[UIView alloc] initWithFrame:CGRectZero];
-    self.cardView.backgroundColor = [UIColor whiteColor];
-    self.cardView.layer.cornerRadius = 12.0;
-    self.cardView.layer.borderWidth = 1.0;
-    self.cardView.layer.borderColor = [UIColor colorWithWhite:0.88 alpha:1.0].CGColor;
+    self.cardView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.97];
+    self.cardView.layer.cornerRadius = 14.0;
     self.cardView.layer.masksToBounds = YES;
     [self.view addSubview:self.cardView];
 
@@ -82,35 +80,35 @@
     self.iconView.hidden = YES;
     [self.cardView addSubview:self.iconView];
 
+    // Keep these views for state updates, but the TrollStore-style HUD only
+    // shows the spinner and the current activity text.
     self.titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.titleLabel.backgroundColor = [UIColor clearColor];
-    self.titleLabel.font = [UIFont boldSystemFontOfSize:22.0];
-    self.titleLabel.textColor = [UIColor colorWithWhite:0.12 alpha:1.0];
-    self.titleLabel.textAlignment = NSTextAlignmentCenter;
-    self.titleLabel.numberOfLines = 2;
-    self.titleLabel.text = @"Config IPA...";
+    self.titleLabel.hidden = YES;
     [self.cardView addSubview:self.titleLabel];
 
     self.progressView = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
     self.progressView.progress = 0.0;
+    self.progressView.hidden = YES;
     [self.cardView addSubview:self.progressView];
 
     self.statusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.statusLabel.backgroundColor = [UIColor clearColor];
-    self.statusLabel.font = [UIFont systemFontOfSize:14.0];
-    self.statusLabel.textColor = [UIColor colorWithWhite:0.45 alpha:1.0];
+    self.statusLabel.font = [UIFont boldSystemFontOfSize:17.0];
+    self.statusLabel.textColor = [UIColor colorWithWhite:0.10 alpha:1.0];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
-    self.statusLabel.numberOfLines = 3;
-    self.statusLabel.text = @"Preparing...";
+    self.statusLabel.numberOfLines = 2;
+    self.statusLabel.text = @"Installing";
     [self.cardView addSubview:self.statusLabel];
 
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
     self.spinner.hidesWhenStopped = YES;
+    self.spinner.transform = CGAffineTransformMakeScale(1.45, 1.45);
     [self.cardView addSubview:self.spinner];
 
     self.cancelButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
     [self.cancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
-    self.cancelButton.titleLabel.font = [UIFont systemFontOfSize:17.0];
+    self.cancelButton.titleLabel.font = [UIFont systemFontOfSize:15.0];
+    self.cancelButton.hidden = YES;
     [self.cancelButton addTarget:self action:@selector(cancelTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.cardView addSubview:self.cancelButton];
 
@@ -154,51 +152,25 @@
 - (void)layoutContent {
     CGFloat width = self.view.bounds.size.width;
     CGFloat height = self.view.bounds.size.height;
-    CGFloat horizontalMargin = OT_IS_IPAD ? 60.0 : 20.0;
-    CGFloat cardWidth = MIN(OT_IS_IPAD ? 500.0 : 380.0, width - horizontalMargin * 2.0);
-    if (cardWidth < 240.0) {
-        cardWidth = width - 16.0;
-    }
-    CGFloat innerWidth = cardWidth - 48.0;
+    CGFloat cardWidth = MIN(OT_IS_IPAD ? 300.0 : 250.0, width - 40.0);
+    BOOL showsCancel = !self.cancelButton.hidden;
+    CGFloat cardHeight = showsCancel ? 178.0 : 136.0;
 
-    BOOL showsIcon = !self.iconView.hidden;
-    CGFloat titleHeight = 32.0;
-    CGFloat progressHeight = 8.0;
-    CGFloat statusHeight = 54.0;
-    CGFloat spinnerHeight = 20.0;
-    CGFloat buttonHeight = 40.0;
-    CGFloat verticalPadding = 28.0;
-    CGFloat iconBlock = showsIcon ? (72.0 + 12.0) : 0.0;
+    self.cardView.frame = CGRectMake((width - cardWidth) / 2.0,
+                                     (height - cardHeight) / 2.0,
+                                     cardWidth,
+                                     cardHeight);
 
-    CGFloat totalHeight = verticalPadding + iconBlock + titleHeight + 22.0 +
-                          progressHeight + 14.0 + statusHeight + 12.0 + spinnerHeight + 18.0 +
-                          buttonHeight + verticalPadding;
-    CGFloat cardY = MAX(24.0, (height - totalHeight) / 2.0);
-    CGFloat cardX = (width - cardWidth) / 2.0;
-    self.cardView.frame = CGRectMake(cardX, cardY, cardWidth, totalHeight);
-
-    CGFloat cursor = verticalPadding;
-    if (showsIcon) {
-        self.iconView.frame = CGRectMake((cardWidth - 72.0) / 2.0, cursor, 72.0, 72.0);
-        cursor += 72.0 + 12.0;
-    }
-
-    self.titleLabel.frame = CGRectMake(24.0, cursor, innerWidth, titleHeight);
-    cursor += titleHeight + 22.0;
-
-    self.progressView.frame = CGRectMake(24.0, cursor, innerWidth, progressHeight);
-    cursor += progressHeight + 14.0;
-
-    self.statusLabel.frame = CGRectMake(24.0, cursor, innerWidth, statusHeight);
-    cursor += statusHeight + 12.0;
-
-    self.spinner.frame = CGRectMake((cardWidth - spinnerHeight) / 2.0, cursor, spinnerHeight, spinnerHeight);
-    cursor += spinnerHeight + 18.0;
-
-    self.cancelButton.frame = CGRectMake((cardWidth - 130.0) / 2.0, cursor, 130.0, buttonHeight);
+    self.spinner.frame = CGRectMake((cardWidth - 24.0) / 2.0, 26.0, 24.0, 24.0);
+    self.statusLabel.frame = CGRectMake(14.0, 66.0, cardWidth - 28.0, 44.0);
+    self.cancelButton.frame = CGRectMake((cardWidth - 120.0) / 2.0, 122.0, 120.0, 40.0);
 }
 
 #pragma mark - Flow
+
+- (NSString *)installActivityText {
+    return self.request.isRemote ? @"Installing from url" : @"Installing";
+}
 
 - (void)beginInstall {
     if (self.request.isRemote) {
@@ -215,8 +187,10 @@
     self.downloadPath = [NSString stringWithFormat:@"/tmp/oldtroll_download_%ld_%u.ipa",
                          (long)[[NSDate date] timeIntervalSince1970], arc4random()];
 
-    [self updateProgress:0.0 status:@"Downloading..."];
+    self.cancelButton.hidden = NO;
+    [self updateProgress:0.0 status:@"Downloading"];
     [self.spinner startAnimating];
+    [self.view setNeedsLayout];
 
     NSURLRequest *urlRequest = [NSURLRequest requestWithURL:self.request.sourceURL
                                                 cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
@@ -228,7 +202,7 @@
     if (self.cancelled) {
         return;
     }
-    [self updateProgress:0.0 status:@"Config IPA..."];
+    [self updateProgress:0.0 status:[self installActivityText]];
     [self.spinner startAnimating];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -290,10 +264,11 @@
     }
 
     self.installing = YES;
+    self.cancelButton.hidden = YES;
     self.cancelButton.enabled = NO;
-    self.cancelButton.alpha = 0.4;
+    [self.view setNeedsLayout];
     [self beginBackgroundTaskIfPossible];
-    [self updateProgress:0.05 status:@"Preparing..."];
+    [self updateProgress:0.05 status:[self installActivityText]];
 
     OTIPAPackage *package = self.package;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -303,7 +278,7 @@
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf updateProgress:0.35 status:@"Installing with AppSync..."];
+            [strongSelf updateProgress:0.35 status:[strongSelf installActivityText]];
         });
 
         NSError *error = nil;
@@ -457,7 +432,7 @@
         }
     }
     self.expectedBytes = response.expectedContentLength;
-    [self updateProgress:0.0 status:@"Downloading..."];
+    [self updateProgress:0.0 status:@"Downloading"];
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
@@ -475,13 +450,7 @@
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
     if (now - self.lastProgressUpdate > 0.1) {
         self.lastProgressUpdate = now;
-        if (self.expectedBytes > 0) {
-            NSString *status = [NSString stringWithFormat:@"Downloading... %ld%%",
-                                (long)((self.receivedBytes * 100) / self.expectedBytes)];
-            [self updateProgress:progress status:status];
-        } else {
-            [self updateProgress:-1.0 status:@"Downloading..."];
-        }
+        [self updateProgress:progress status:@"Downloading"];
     }
 }
 
@@ -510,7 +479,7 @@
         return;
     }
 
-    [self updateProgress:1.0 status:@"Config IPA..."];
+    [self updateProgress:1.0 status:[self installActivityText]];
     [self processFileAtPath:self.downloadPath];
 }
 
