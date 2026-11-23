@@ -37,9 +37,15 @@
     self.tableView.delegate = self;
     [self.view addSubview:self.tableView];
 
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
-                                                                                          target:self
-                                                                                          action:@selector(cancelTapped:)];
+    // The root picker can be dismissed; pushed folders rely on the native
+    // navigation back button so the user can walk back up the tree.
+    if (self.navigationController.viewControllers.count <= 1) {
+        self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+                                                                                              target:self
+                                                                                              action:@selector(cancelTapped:)];
+    } else {
+        self.navigationItem.leftBarButtonItem = nil;
+    }
 
     [self loadItems];
 }

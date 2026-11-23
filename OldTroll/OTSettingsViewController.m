@@ -80,8 +80,6 @@
         return nil;
     }
     return @"When enabled, OldTroll accepts external URL calls and installs the IPA automatically:\n\n"
-            "cor-oldtroll://install?url=<IPA URL>\n"
-            "cor-oldtroll://?url=<IPA URL>\n"
             "apple-magnifier://install?url=<IPA URL>\n\n"
             "Percent-encoded links are supported. Leave this on if you use OldTroll from Safari or other apps.";
 }

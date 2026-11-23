@@ -133,7 +133,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     [self hideHUD];
 
     UIAlertView *alert = [[UIAlertView alloc] initWithTitle:OTNonEmptyString(title, @"Installing")
-                                                    message:canCancel ? @"\n" : @"\n\n"
+                                                    message:nil
                                                    delegate:self
                                           cancelButtonTitle:canCancel ? @"Cancel" : nil
                                           otherButtonTitles:nil];
@@ -145,7 +145,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     spinner.hidesWhenStopped = NO;
     [alert addSubview:spinner];
     spinner.center = CGPointMake(CGRectGetMidX(alert.bounds),
-                                 CGRectGetMaxY(alert.bounds) - (canCancel ? 58.0 : 40.0));
+                                 CGRectGetMaxY(alert.bounds) - (canCancel ? 64.0 : 32.0));
     [spinner startAnimating];
 
     self.hudAlert = alert;
@@ -170,7 +170,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
     if (alertView == self.hudAlert && self.spinner != nil) {
         BOOL hasCancel = alertView.cancelButtonIndex != -1;
         self.spinner.center = CGPointMake(CGRectGetMidX(alertView.bounds),
-                                          CGRectGetMaxY(alertView.bounds) - (hasCancel ? 58.0 : 40.0));
+                                          CGRectGetMaxY(alertView.bounds) - (hasCancel ? 64.0 : 32.0));
     }
 }
 
@@ -245,6 +245,17 @@ static NSString *OTSizeStringForFile(NSString *path) {
                                           cancelButtonTitle:@"Cancel"
                                           otherButtonTitles:@"Install", nil];
     alert.tag = 7002;
+
+    UIImage *appIcon = self.package.icon;
+    if (appIcon != nil &&
+        [alert respondsToSelector:NSSelectorFromString(@"setAccessoryView:")]) {
+        UIImageView *iconView = [[UIImageView alloc] initWithFrame:CGRectMake(0.0, 0.0, 52.0, 52.0)];
+        iconView.image = appIcon;
+        iconView.contentMode = UIViewContentModeScaleAspectFit;
+        iconView.backgroundColor = [UIColor clearColor];
+        [alert setValue:iconView forKey:@"accessoryView"];
+    }
+
     [alert show];
     self.metadataAlert = alert;
 }
@@ -256,14 +267,22 @@ static NSString *OTSizeStringForFile(NSString *path) {
             [self showHUDWithTitle:[self installActivityText] canCancel:NO];
             [self installPackage];
         } else {
-            [self cancelWithMessage:nil];
+            __weak typeof(self) weakSelf = self;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                [weakSelf cancelWithMessage:nil];
+            });
         }
         return;
     }
 
     if (alertView.tag == 7001 && buttonIndex == alertView.cancelButtonIndex) {
         if (!self.installing) {
-            [self cancelWithMessage:nil];
+            __weak typeof(self) weakSelf = self;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                [weakSelf cancelWithMessage:nil];
+            });
         }
     }
 }
