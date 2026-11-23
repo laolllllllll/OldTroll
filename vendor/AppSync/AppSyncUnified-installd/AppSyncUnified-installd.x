@@ -194,6 +194,11 @@ DECL_FUNC(MISValidateSignatureAndCopyInfo, uintptr_t, NSString *path, NSDictiona
 
 %ctor {
 	@autoreleasepool {
+		NSString *officialDylib = @"/Library/MobileSubstrate/DynamicLibraries/AppSyncUnified-installd.dylib";
+		if ([[NSFileManager defaultManager] fileExistsAtPath:officialDylib]) {
+			LOG(@"Official AppSync Unified is installed; OldTroll AppSync stays inactive.");
+			return;
+		}
 		LOG(@"kCFCoreFoundationVersionNumber = %f", kCFCoreFoundationVersionNumber);
 		MSImageRef image;
 		LOG(@"Loading and injecting into libmis.dylib…");

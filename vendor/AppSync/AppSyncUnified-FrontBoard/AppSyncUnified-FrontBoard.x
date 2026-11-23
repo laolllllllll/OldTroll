@@ -31,5 +31,10 @@
 %end
 
 %ctor {
+	NSString *officialDylib = @"/Library/MobileSubstrate/DynamicLibraries/AppSyncUnified-FrontBoard.dylib";
+	if ([[NSFileManager defaultManager] fileExistsAtPath:officialDylib]) {
+		LOG(@"Official AppSync Unified is installed; OldTroll FrontBoard hook stays inactive.");
+		return;
+	}
 	LOG(@"kCFCoreFoundationVersionNumber = %f", kCFCoreFoundationVersionNumber);
 }
