@@ -230,7 +230,6 @@
         }
 
         OTProgressViewController *progress = [[OTProgressViewController alloc] initWithRequest:request];
-        progress.modalPresentationStyle = UIModalPresentationCurrentContext;
         progress.completionBlock = ^(BOOL success, OTAppInfo *app, NSString *message) {
             __strong typeof(weakSelf) innerSelf = weakSelf;
             if (innerSelf == nil) {
@@ -262,7 +261,7 @@
                                handler:nil];
             }
         };
-        [strongSelf presentViewController:progress animated:YES completion:nil];
+        [progress presentOverViewController:strongSelf];
     });
 }
 

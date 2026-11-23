@@ -131,6 +131,17 @@ static NSArray *OTAppIconSizes(void) {
     return 1;
 }
 
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 1) {
+        return @"Bundle ID is the app's identity. Changing it breaks the app sandbox, LaunchServices registration and signature, so it is locked after installation. Name, version and icon can still be changed safely.";
+    }
+    return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+    return section == 1 ? 64.0 : 0.0;
+}
+
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
         case 0: return @"Actions";
@@ -195,7 +206,7 @@ static NSArray *OTAppIconSizes(void) {
             [cell.contentView addSubview:field];
         }
         UITextField *field = (UITextField *)[cell.contentView viewWithTag:4100];
-        NSArray *titles = @[@"Name", @"Version", @"Bundle ID"];
+        NSArray *titles = @[@"Name", @"Version", @"Bundle ID (locked)"];
         NSArray *values = @[OTNonEmptyString(self.appInfo.name, @"Unknown"),
                             OTNonEmptyString(self.appInfo.version, @"Unknown"),
                             OTNonEmptyString(self.appInfo.bundleId, @"Unknown")];
@@ -204,6 +215,9 @@ static NSArray *OTAppIconSizes(void) {
         field.keyboardType = indexPath.row == 2 ? UIKeyboardTypeURL : UIKeyboardTypeDefault;
         field.autocapitalizationType = UITextAutocapitalizationTypeNone;
         field.autocorrectionType = UITextAutocorrectionTypeNo;
+        field.enabled = indexPath.row != 2;
+        field.textColor = indexPath.row == 2 ? [UIColor colorWithWhite:0.55 alpha:1.0] :
+                                               [UIColor colorWithWhite:0.32 alpha:1.0];
         if (indexPath.row == 0) {
             self.nameField = field;
         } else if (indexPath.row == 1) {
@@ -230,8 +244,15 @@ static NSArray *OTAppIconSizes(void) {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
     if (indexPath.section == 1) {
-        UITextField *field = indexPath.row == 0 ? self.nameField :
-                             indexPath.row == 1 ? self.versionField : self.bundleField;
+        if (indexPath.row == 2) {
+            [OTAlert showWithTitle:@"Bundle ID Locked"
+                           message:@"An installed app's Bundle ID is tied to its sandbox container and LaunchServices record. Editing it makes iOS launch the app with the wrong identity and it crashes. Use Name, Version and the AppIcon instead."
+                      cancelButton:@"OK"
+                           buttons:nil
+                           handler:nil];
+            return;
+        }
+        UITextField *field = indexPath.row == 0 ? self.nameField : self.versionField;
         [field becomeFirstResponder];
         return;
     }

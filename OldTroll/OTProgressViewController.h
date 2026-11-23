@@ -17,6 +17,10 @@ typedef void (^OTProgressCompletionBlock)(BOOL success, OTAppInfo *app, NSString
 
 - (instancetype)initWithRequest:(OTInstallRequest *)request;
 
+// Keeps the Apps list visible underneath instead of presenting a blank modal
+// context. The caller should pass its tab bar controller when available.
+- (void)presentOverViewController:(UIViewController *)host;
+
 @property (nonatomic, copy) OTProgressCompletionBlock completionBlock;
 
 @end

@@ -36,7 +36,7 @@
     self.introLabel.textColor = [UIColor colorWithWhite:0.28 alpha:1.0];
     self.introLabel.textAlignment = NSTextAlignmentCenter;
     self.introLabel.numberOfLines = 0;
-    self.introLabel.text = @"OldTroll is free and always will be.\nIf it saved you some time, a coffee is appreciated.";
+    self.introLabel.text = @"Thanks for donating.";
     [self.scrollView addSubview:self.introLabel];
 
     self.qrCard = [[UIView alloc] initWithFrame:CGRectZero];
@@ -59,7 +59,7 @@
     self.hintLabel.font = [UIFont systemFontOfSize:13.0];
     self.hintLabel.textColor = [UIColor colorWithWhite:0.48 alpha:1.0];
     self.hintLabel.textAlignment = NSTextAlignmentCenter;
-    self.hintLabel.text = @"Tap the QR code after donating";
+    self.hintLabel.text = @"WeChat Pay QR Code";
     [self.scrollView addSubview:self.hintLabel];
 
     [self buildThankView];

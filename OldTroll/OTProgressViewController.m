@@ -15,6 +15,21 @@
 #import <QuartzCore/QuartzCore.h>
 #import <sys/stat.h>
 
+static UIImage *OTWindowSnapshot(void) {
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    if (window == nil || window.bounds.size.width < 1.0 || window.bounds.size.height < 1.0) {
+        return nil;
+    }
+    UIGraphicsBeginImageContextWithOptions(window.bounds.size, YES, 1.0);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    if (context != NULL) {
+        [window.layer renderInContext:context];
+    }
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return image;
+}
+
 static NSString *OTSizeStringForFile(NSString *path) {
     NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
     NSNumber *bytes = attributes[NSFileSize];
@@ -49,6 +64,8 @@ static NSString *OTSizeStringForFile(NSString *path) {
 @property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTask;
 
 @property (nonatomic, strong) UIView *cardView;
+@property (nonatomic, strong) UIImage *backgroundSnapshot;
+@property (nonatomic, assign) BOOL embedded;
 @property (nonatomic, strong) UIImageView *iconView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIProgressView *progressView;
@@ -66,6 +83,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
         _request = request;
         _lastProgressUpdate = 0;
         _backgroundTask = UIBackgroundTaskInvalid;
+        _backgroundSnapshot = OTWindowSnapshot();
     }
     return self;
 }
@@ -77,12 +95,37 @@ static NSString *OTSizeStringForFile(NSString *path) {
     }
 }
 
+- (void)presentOverViewController:(UIViewController *)host {
+    UIViewController *container = host;
+    if (container.tabBarController != nil) {
+        container = container.tabBarController;
+    }
+    if (container == nil) {
+        return;
+    }
+    self.embedded = YES;
+    self.view.frame = container.view.bounds;
+    self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [container addChildViewController:self];
+    [container.view addSubview:self.view];
+    [self didMoveToParentViewController:container];
+    [self beginAppearanceTransition:YES animated:NO];
+    [self endAppearanceTransition];
+}
+
 #pragma mark - Lifecycle
 
 - (void)viewDidLoad {
     [super viewDidLoad];
 
     self.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.35];
+    if (!self.embedded && self.backgroundSnapshot != nil) {
+        UIImageView *backgroundView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+        backgroundView.image = self.backgroundSnapshot;
+        backgroundView.contentMode = UIViewContentModeScaleToFill;
+        backgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self.view addSubview:backgroundView];
+    }
     if ([self respondsToSelector:@selector(setEdgesForExtendedLayout:)]) {
         self.edgesForExtendedLayout = UIRectEdgeNone;
     }
@@ -355,6 +398,19 @@ static NSString *OTSizeStringForFile(NSString *path) {
     }
 }
 
+- (void)dismissAfterCompletion:(void (^)(void))completion {
+    if (self.embedded) {
+        [self willMoveToParentViewController:nil];
+        [self.view removeFromSuperview];
+        [self removeFromParentViewController];
+        if (completion != nil) {
+            completion();
+        }
+        return;
+    }
+    [self dismissViewControllerAnimated:YES completion:completion];
+}
+
 - (void)finishWithSuccess:(BOOL)success message:(NSString *)message appPath:(NSString *)appPath {
     if (self.finished) {
         return;
@@ -394,7 +450,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
             strongSelf.downloadPath = nil;
         }
         OTProgressCompletionBlock completion = strongSelf.completionBlock;
-        [strongSelf dismissViewControllerAnimated:YES completion:^{
+        [strongSelf dismissAfterCompletion:^{
             if (completion != nil) {
                 completion(success, app, message);
             }
@@ -428,7 +484,7 @@ static NSString *OTSizeStringForFile(NSString *path) {
 
     OTProgressCompletionBlock completion = self.completionBlock;
     __weak typeof(self) weakSelf = self;
-    [self dismissViewControllerAnimated:YES completion:^{
+    [self dismissAfterCompletion:^{
         if (completion != nil) {
             completion(NO, nil, message);
         }
