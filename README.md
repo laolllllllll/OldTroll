@@ -20,12 +20,6 @@ Open OldTroll, tap **+**, then choose **Install IPA File** or **Install from URL
 <p align="center">
   <img src="Apps.jpeg" width="360" alt="Apps tab">
   <img src="Download.jpeg" width="360" alt="Downloading">
+  <img src="TrollColor.jpeg" width="360" alt="Troll Color">
 </p>
 
----
-
-## Demo
-
-<video src="run.mp4" controls width="100%"></video>
-
-[Watch run.mp4](run.mp4)

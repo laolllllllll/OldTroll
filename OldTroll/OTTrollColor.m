@@ -281,9 +281,7 @@ static NSArray *OTSplashNames(void) {
     NSArray *sizes = OTIconSizes();
     for (NSUInteger index = 0; index < names.count; index++) {
         CGFloat size = [sizes[index] doubleValue];
-        BOOL isCydiaIcon = [names[index] isEqualToString:@"CydiaIcon.png"];
-        UIImage *image = isCydiaIcon ? [self tintedImageWithColor:color size:size]
-                                     : [self squareIconImageWithColor:color size:size];
+        UIImage *image = [self tintedImageWithColor:color size:size];
         NSData *png = image == nil ? nil : UIImagePNGRepresentation(image);
         if (png == nil) {
             if (error != NULL) {

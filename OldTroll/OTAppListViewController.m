@@ -66,6 +66,7 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    self.navigationController.tabBarItem.title = @"Apps";
     [self refreshApps];
 }
 
