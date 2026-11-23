@@ -9,15 +9,33 @@
 #import "OTAppManager.h"
 #import "OTCompat.h"
 #import "OTIPAPackage.h"
+#import "OTInstallMetadataViewController.h"
 #import "OTInstallRequest.h"
 
 #import <QuartzCore/QuartzCore.h>
 #import <sys/stat.h>
 
+static NSString *OTSizeStringForFile(NSString *path) {
+    NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
+    NSNumber *bytes = attributes[NSFileSize];
+    if (bytes == nil) {
+        return @"Unknown";
+    }
+    double value = bytes.doubleValue;
+    if (value >= 1024.0 * 1024.0) {
+        return [NSString stringWithFormat:@"%.1f MB", value / (1024.0 * 1024.0)];
+    }
+    if (value >= 1024.0) {
+        return [NSString stringWithFormat:@"%.0f KB", value / 1024.0];
+    }
+    return [NSString stringWithFormat:@"%.0f B", value];
+}
+
 @interface OTProgressViewController () <NSURLConnectionDataDelegate, NSURLConnectionDelegate>
 
 @property (nonatomic, strong) OTInstallRequest *request;
 @property (nonatomic, strong) OTIPAPackage *package;
+@property (nonatomic, copy) NSString *packageSize;
 @property (nonatomic, strong) NSURLConnection *connection;
 @property (nonatomic, strong) NSMutableData *downloadData;
 @property (nonatomic, copy) NSString *downloadPath;
@@ -204,6 +222,7 @@
     }
     [self updateProgress:0.0 status:[self installActivityText]];
     [self.spinner startAnimating];
+    self.packageSize = OTSizeStringForFile(path);
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSError *error = nil;
@@ -227,35 +246,42 @@
             self.titleLabel.text = package.appName;
             [self.spinner stopAnimating];
             [self.view setNeedsLayout];
-
-            if (self.request.isAutomatic) {
-                [self installPackage];
-            } else {
-                [self showInstallConfirmation];
-            }
+            [self showInstallConfirmation];
         });
     });
 }
 
 - (void)showInstallConfirmation {
-    NSString *message = [NSString stringWithFormat:@"Name: %@\nVersion: %@\nBundle ID: %@",
-                         self.package.appName, self.package.version, self.package.bundleId];
+    self.spinner.hidden = YES;
+    self.cardView.hidden = YES;
+    self.view.backgroundColor = [UIColor clearColor];
+
+    OTInstallMetadataViewController *metadata =
+        [[OTInstallMetadataViewController alloc] initWithName:self.package.appName
+                                                     bundleId:self.package.bundleId
+                                                      version:self.package.version
+                                                         size:self.packageSize
+                                                         icon:self.package.icon];
+    metadata.modalPresentationStyle = UIModalPresentationCurrentContext;
+
     __weak typeof(self) weakSelf = self;
-    [OTAlert showWithTitle:@"Confirm Install"
-                   message:message
-              cancelButton:@"Cancel"
-                   buttons:@[@"Install"]
-                   handler:^(NSInteger buttonIndex, NSString *text) {
+    metadata.cancelBlock = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf != nil) {
+            [strongSelf cancelWithMessage:nil];
+        }
+    };
+    metadata.installBlock = ^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (strongSelf == nil) {
             return;
         }
-        if (buttonIndex == 1) {
-            [strongSelf installPackage];
-        } else {
-            [strongSelf cancelWithMessage:nil];
-        }
-    }];
+        strongSelf.cardView.hidden = NO;
+        strongSelf.spinner.hidden = NO;
+        strongSelf.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.35];
+        [strongSelf installPackage];
+    };
+    [self presentViewController:metadata animated:YES completion:nil];
 }
 
 - (void)installPackage {

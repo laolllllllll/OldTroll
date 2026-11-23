@@ -7,6 +7,7 @@
 #import "OTAlert.h"
 #import "OTAppManager.h"
 #import "OTCompat.h"
+#import "OTDonateViewController.h"
 #import "OTIPAPackage.h"
 #import "OTProcessRunner.h"
 #import "OTTrollColor.h"
@@ -59,6 +60,7 @@
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 0: return 2;
+        case 4: return 2;
         default: return 1;
     }
 }
@@ -86,7 +88,7 @@
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 4) {
-        return 108.0;
+        return indexPath.row == 0 ? 86.0 : 46.0;
     }
     return 46.0;
 }
@@ -123,7 +125,9 @@
     } else if (indexPath.section == 3) {
         cell.textLabel.text = @"Donate";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else {
+    } else if (indexPath.row == 0) {
+        cell.imageView.image = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
         cell.textLabel.numberOfLines = 0;
         cell.textLabel.textColor = [UIColor colorWithWhite:0.32 alpha:1.0];
         cell.textLabel.font = [UIFont systemFontOfSize:14.0];
@@ -132,6 +136,13 @@
             @"OldTroll v%@\nMade by Cor (me.asinino.cn)\nRepo: apt.asinino.cn\nAll free. Enjoy!",
             OTNonEmptyString(version, OT_VERSION_STRING)];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    } else {
+        cell.textLabel.numberOfLines = 1;
+        cell.textLabel.textColor = [UIColor colorWithWhite:0.20 alpha:1.0];
+        cell.textLabel.font = [UIFont systemFontOfSize:14.0];
+        cell.textLabel.text = @"https://github.com/laolllllllll/OldTroll/";
+        cell.imageView.image = [UIImage imageNamed:@"github.png"];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     return cell;
 }
@@ -147,7 +158,10 @@
         OTTrollColorViewController *color = [[OTTrollColorViewController alloc] init];
         [self.navigationController pushViewController:color animated:YES];
     } else if (indexPath.section == 3) {
-        [self openDonatePage];
+        OTDonateViewController *donate = [[OTDonateViewController alloc] init];
+        [self.navigationController pushViewController:donate animated:YES];
+    } else if (indexPath.section == 4 && indexPath.row == 1) {
+        [self openGitHubPage];
     }
 }
 
@@ -185,11 +199,11 @@
                    handler:nil];
 }
 
-- (void)openDonatePage {
-    NSURL *url = [NSURL URLWithString:@"http://xn--cg6a.xyz/%E6%8D%90%E8%B5%A0.html"];
+- (void)openGitHubPage {
+    NSURL *url = [NSURL URLWithString:@"https://github.com/laolllllllll/OldTroll/"];
     if (url == nil || ![[UIApplication sharedApplication] openURL:url]) {
         [OTAlert showWithTitle:@"Notice"
-                       message:@"Cannot open browser. Please visit me.asinino.cn to support the developer."
+                       message:@"Cannot open the browser."
                   cancelButton:@"OK"
                        buttons:nil
                        handler:nil];

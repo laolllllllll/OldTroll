@@ -239,9 +239,9 @@
             [innerSelf refreshApps];
             if (success) {
                 NSString *title = app.name ?: request.displayString;
-                [OTAlert showWithTitle:@"Success"
-                               message:@"Installation complete!"
-                          cancelButton:@"Done"
+                [OTAlert showWithTitle:@"Installation Complete"
+                               message:[NSString stringWithFormat:@"Do you want to open %@?", title]
+                          cancelButton:@"Close"
                                buttons:@[@"Open"]
                                handler:^(NSInteger buttonIndex, NSString *text) {
                     if (buttonIndex == 1 && app != nil) {

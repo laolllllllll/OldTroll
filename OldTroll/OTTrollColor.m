@@ -14,6 +14,34 @@ static const CGFloat OTTrollDefaultRed = 97.0 / 255.0;
 static const CGFloat OTTrollDefaultGreen = 228.0 / 255.0;
 static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
 
+static NSArray *OTIconNames(void) {
+    return @[
+        @"Icon.png", @"Icon@2x.png",
+        @"Icon-72.png", @"Icon-72@2x.png",
+        @"Icon-76.png", @"Icon-76@2x.png",
+        @"Icon-60.png", @"Icon-60@2x.png",
+        @"Icon-40.png", @"Icon-40@2x.png",
+        @"Icon-Small.png", @"Icon-Small@2x.png",
+        @"CydiaIcon.png"
+    ];
+}
+
+static NSArray *OTIconSizes(void) {
+    return @[@57, @114, @72, @144, @76, @152, @60, @120, @40, @80, @29, @58, @152];
+}
+
+static NSArray *OTSplashNames(void) {
+    return @[
+        @"Default.png",
+        @"Default@2x.png",
+        @"Default-568h@2x.png",
+        @"Default-Portrait.png",
+        @"Default-Portrait@2x.png",
+        @"Default-Landscape.png",
+        @"Default-Landscape@2x.png"
+    ];
+}
+
 @implementation OTTrollColor
 
 + (CGFloat)componentForKey:(NSString *)key fallback:(CGFloat)fallback {
@@ -63,18 +91,10 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
     return image;
 }
 
-+ (UIImage *)tintedImageWithColor:(UIColor *)color size:(CGFloat)size {
-    UIImage *base = [self baseImage];
-    if (base == nil || size < 1.0) {
-        return nil;
-    }
+#pragma mark - Tinting
 
-    CGSize targetSize = CGSizeMake(size, size);
-    UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
-    [base drawInRect:CGRectMake(0.0, 0.0, size, size)];
-    UIImage *scaled = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    if (scaled == nil) {
++ (UIImage *)applyTintToImage:(UIImage *)source color:(UIColor *)color {
+    if (source == nil) {
         return nil;
     }
 
@@ -85,16 +105,16 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
         blue = OTTrollDefaultBlue;
     }
 
-    CGImageRef source = scaled.CGImage;
-    size_t width = CGImageGetWidth(source);
-    size_t height = CGImageGetHeight(source);
+    CGImageRef sourceImage = source.CGImage;
+    size_t width = CGImageGetWidth(sourceImage);
+    size_t height = CGImageGetHeight(sourceImage);
     if (width == 0 || height == 0) {
-        return scaled;
+        return source;
     }
 
     uint8_t *pixels = calloc(width * height, 4);
     if (pixels == NULL) {
-        return scaled;
+        return source;
     }
 
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -103,10 +123,10 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
     CGColorSpaceRelease(colorSpace);
     if (context == NULL) {
         free(pixels);
-        return scaled;
+        return source;
     }
 
-    CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), source);
+    CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), sourceImage);
     CGContextRelease(context);
 
     CGFloat targetRed = red * 255.0;
@@ -123,9 +143,9 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
             continue;
         }
 
-        // The Troll base art uses a saturated green field. Recolour only
-        // pixels where green clearly dominates, keeping the white face and
-        // black line art untouched. The blend keeps anti-aliased edges clean.
+        // The Troll art uses a saturated green field. Recolour only pixels
+        // where green clearly dominates, keeping the white face, black line
+        // art and the white launch-screen background untouched.
         CGFloat bias = ((CGFloat)g - MAX((CGFloat)r, (CGFloat)b)) / 48.0;
         if (bias <= 0.0) {
             continue;
@@ -140,7 +160,7 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
     CGContextRef output = CGBitmapContextCreate(pixels, width, height, 8, width * 4,
                                                 outputSpace, kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(outputSpace);
-    UIImage *result = scaled;
+    UIImage *result = source;
     if (output != NULL) {
         CGImageRef tinted = CGBitmapContextCreateImage(output);
         CGContextRelease(output);
@@ -153,6 +173,32 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
     return result;
 }
 
++ (UIImage *)tintedImageWithColor:(UIColor *)color size:(CGFloat)size {
+    UIImage *base = [self baseImage];
+    if (base == nil || size < 1.0) {
+        return nil;
+    }
+
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(size, size), NO, 1.0);
+    [base drawInRect:CGRectMake(0.0, 0.0, size, size)];
+    UIImage *scaled = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    if (scaled == nil) {
+        return nil;
+    }
+    return [self applyTintToImage:scaled color:color];
+}
+
++ (UIImage *)tintedSplashNamed:(NSString *)name color:(UIColor *)color {
+    NSString *resource = [name stringByDeletingPathExtension];
+    NSString *path = [[NSBundle mainBundle] pathForResource:resource ofType:@"png"];
+    UIImage *image = path == nil ? nil : [UIImage imageWithContentsOfFile:path];
+    if (image == nil) {
+        return nil;
+    }
+    return [self applyTintToImage:image color:color];
+}
+
 + (UIImage *)previewImage {
     return [self imageWithColor:[self currentColor] size:152.0];
 }
@@ -160,6 +206,8 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
 + (UIImage *)imageWithColor:(UIColor *)color size:(CGFloat)size {
     return [self tintedImageWithColor:color size:size];
 }
+
+#pragma mark - Icon set
 
 + (BOOL)writeIconSetToDirectory:(NSString *)directory error:(NSError **)error {
     NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -174,26 +222,9 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
         return NO;
     }
 
-    NSArray *names = @[
-        @"Icon.png", @"Icon@2x.png",
-        @"Icon-72.png", @"Icon-72@2x.png",
-        @"Icon-76.png", @"Icon-76@2x.png",
-        @"Icon-60.png", @"Icon-60@2x.png",
-        @"Icon-40.png", @"Icon-40@2x.png",
-        @"Icon-Small.png", @"Icon-Small@2x.png",
-        @"CydiaIcon.png"
-    ];
-    NSArray *sizes = @[
-        @57, @114,
-        @72, @144,
-        @76, @152,
-        @60, @120,
-        @40, @80,
-        @29, @58,
-        @152
-    ];
-
     UIColor *color = [self currentColor];
+    NSArray *names = OTIconNames();
+    NSArray *sizes = OTIconSizes();
     for (NSUInteger index = 0; index < names.count; index++) {
         CGFloat size = [sizes[index] doubleValue];
         UIImage *image = [self tintedImageWithColor:color size:size];
@@ -215,6 +246,18 @@ static const CGFloat OTTrollDefaultBlue = 10.0 / 255.0;
             }
             return NO;
         }
+    }
+
+    // Recolour the static launch images as well. Without this the first
+    // second of every launch still shows the original green Troll.
+    for (NSString *name in OTSplashNames()) {
+        UIImage *image = [self tintedSplashNamed:name color:color];
+        NSData *png = image == nil ? nil : UIImagePNGRepresentation(image);
+        if (png == nil) {
+            continue;
+        }
+        NSString *path = [directory stringByAppendingPathComponent:name];
+        [png writeToFile:path atomically:YES];
     }
     return YES;
 }

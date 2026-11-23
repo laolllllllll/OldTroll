@@ -27,6 +27,11 @@
                                 method:(NSString *)method;
 - (void)removeInstalledAppWithBundleId:(NSString *)bundleId;
 
+// Keeps the OldTroll install record in sync after the user edits metadata.
+- (void)updateInstalledAppFromBundleId:(NSString *)oldBundleId
+                            toBundleId:(NSString *)newBundleId
+                                  path:(NSString *)path;
+
 // Uninstalls through appinst for AppSync installs. OldTroll 1.x records still
 // use dpkg so upgrades do not leave orphaned application bundles behind.
 - (BOOL)uninstallAppAtPath:(NSString *)path bundleId:(NSString *)bundleId error:(NSString **)error;

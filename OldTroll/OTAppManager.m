@@ -265,6 +265,37 @@ static BOOL OTHelperIsPrivileged(void) {
     [self saveRecords];
 }
 
+- (void)updateInstalledAppFromBundleId:(NSString *)oldBundleId
+                            toBundleId:(NSString *)newBundleId
+                                  path:(NSString *)path {
+    if (OTStringIsEmpty(newBundleId)) {
+        return;
+    }
+    NSMutableArray *records = self.records;
+    NSUInteger match = NSNotFound;
+    for (NSUInteger index = 0; index < records.count; index++) {
+        NSDictionary *record = records[index];
+        if ([record[@"bundleId"] isEqualToString:oldBundleId]) {
+            match = index;
+            break;
+        }
+    }
+    NSMutableDictionary *updated = [NSMutableDictionary dictionary];
+    if (match != NSNotFound) {
+        [updated addEntriesFromDictionary:records[match]];
+    }
+    updated[@"bundleId"] = newBundleId;
+    updated[@"package"] = OTPackageIdentifierForBundleId(newBundleId);
+    updated[@"path"] = OTNonEmptyString(path, updated[@"path"]);
+    updated[@"installMethod"] = OTNonEmptyString(updated[@"installMethod"], @"appsync");
+    if (match != NSNotFound) {
+        [records replaceObjectAtIndex:match withObject:updated];
+    } else {
+        [records addObject:updated];
+    }
+    [self saveRecords];
+}
+
 - (void)removeInstalledAppWithBundleId:(NSString *)bundleId {
     if (OTStringIsEmpty(bundleId)) {
         return;
